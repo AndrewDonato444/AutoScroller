@@ -64,7 +64,7 @@ BRANCH_STRATEGY="${BRANCH_STRATEGY:-chained}"
 # BASE_BRANCH: develop, main, or "current" (use git branch --show-current)
 BASE_BRANCH="${BASE_BRANCH:-main}"
 DRIFT_CHECK="${DRIFT_CHECK:-true}"
-MAX_DRIFT_RETRIES="${MAX_DRIFT_RETRIES:-1}"
+MAX_DRIFT_RETRIES="${MAX_DRIFT_RETRIES:-2}"
 SLACK_FEATURE_CHANNEL="${SLACK_FEATURE_CHANNEL:-#feature-requests}"
 SLACK_REPORT_CHANNEL="${SLACK_REPORT_CHANNEL:-}"
 JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-}"
@@ -98,7 +98,8 @@ fi
 
 # ── Model selection & test detection ──────────────────────────────────────
 
-AGENT_MODEL="${AGENT_MODEL:-}"
+# Cursor CLI default; run `agent --list-models` to see available models
+AGENT_MODEL="${AGENT_MODEL:-composer-1.5}"
 BUILD_MODEL="${BUILD_MODEL:-}"
 RETRY_MODEL="${RETRY_MODEL:-}"
 DRIFT_MODEL="${DRIFT_MODEL:-}"

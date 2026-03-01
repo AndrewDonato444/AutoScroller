@@ -42,7 +42,7 @@
 #   after the build agent commits, comparing them with fresh context.
 #   This catches mismatches the build agent missed (fox-guarding-henhouse problem).
 #
-# MAX_DRIFT_RETRIES: how many times to retry fixing drift (default: 1).
+# MAX_DRIFT_RETRIES: how many times to retry fixing drift (default: 2).
 #   If drift is found, the drift agent auto-fixes by updating specs.
 #   If the fix breaks the build, it retries up to this many times.
 #
@@ -106,15 +106,16 @@ if [ -f "$PROJECT_DIR/.env.local" ]; then
     done < "$PROJECT_DIR/.env.local"
 fi
 
-MAX_FEATURES="${MAX_FEATURES:-25}"
-MAX_RETRIES="${MAX_RETRIES:-1}"
+MAX_FEATURES="${MAX_FEATURES:-50}"
+MAX_RETRIES="${MAX_RETRIES:-3}"
 BRANCH_STRATEGY="${BRANCH_STRATEGY:-chained}"
 DRIFT_CHECK="${DRIFT_CHECK:-true}"
-MAX_DRIFT_RETRIES="${MAX_DRIFT_RETRIES:-1}"
+MAX_DRIFT_RETRIES="${MAX_DRIFT_RETRIES:-2}"
 POST_BUILD_STEPS="${POST_BUILD_STEPS:-test}"
 
 # Model selection (per-step overrides with AGENT_MODEL fallback)
-AGENT_MODEL="${AGENT_MODEL:-}"
+# Cursor CLI default; run `agent --list-models` to see available models
+AGENT_MODEL="${AGENT_MODEL:-composer-1.5}"
 BUILD_MODEL="${BUILD_MODEL:-}"
 RETRY_MODEL="${RETRY_MODEL:-}"
 DRIFT_MODEL="${DRIFT_MODEL:-}"
