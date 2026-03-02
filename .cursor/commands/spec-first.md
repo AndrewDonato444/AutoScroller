@@ -3,15 +3,23 @@
 Create or update the feature specification with Gherkin scenarios and ASCII mockups. This is step 1 of the TDD flow.
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   DESIGN    │ ──▶ │    SPEC     │ ──▶ │    TEST     │ ──▶ │ IMPLEMENT   │
-│ (tokens +   │     │ (Gherkin +  │     │  (failing)  │     │ (loop until │
-│  stubs)     │     │  mockup)    │     │             │     │ tests pass) │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-      ▲                   │
-      │                   │
-      └───────────────────┘
-      (create if not exists, update if exists)
+Per feature:
+  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+  │    SPEC      │ ──▶ │    TEST      │ ──▶ │  IMPLEMENT   │
+  │ (Gherkin +   │     │  (failing)   │     │ (loop until  │
+  │  mockup +    │     │              │     │  tests pass) │
+  │  persona     │     │              │     │              │
+  │  revision)   │     │              │     │              │
+  └──────────────┘     └──────────────┘     └──────────────┘
+        │                                          │
+     [PAUSE]                                       ▼
+   user approves                           ┌──────────────┐
+                                           │  COMPOUND    │
+                                           │ (learnings)  │
+                                           └──────────────┘
+
+Reads from: .specs/personas/, .specs/design-system/
+Writes to: .specs/features/, .specs/design-system/components/ (stubs)
 ```
 
 ## Mode Detection
@@ -64,12 +72,30 @@ Stop for user approval at each step (existing behavior).
    - **Full mode**: continue through tests → implement → compound → commit (same as create)
 4. **If no match** → **CREATE mode** (proceed to Step 1)
 
-### 1. Check/Create Design System
+### 1. Load Context
 
-If this is the first feature (no `.specs/design-system/tokens.md` exists):
-- Auto-create `.specs/design-system/tokens.md` with default tokens
-- Auto-create `.cursor/rules/design-tokens.mdc` cursor rule
-- Inform user: "Created default design system. Customize tokens.md as needed."
+Before writing anything, read what exists. This shapes the entire spec.
+
+#### Personas (required for good specs)
+
+Read all files in `.specs/personas/`:
+- **Primary persona**: Drives vocabulary, flow complexity, and patience constraints
+- **Anti-persona**: Reminds you what NOT to build
+
+If no personas exist, check if `.specs/vision.md` has target user info. If so, mentally construct a persona from it. If neither exists, note it in the output:
+
+```
+⚠️ No personas found. Spec will use generic language.
+Run /personas to create user personas for better specs.
+```
+
+#### Design System
+
+If `.specs/design-system/tokens.md` doesn't exist or is still the unmodified template:
+- Auto-create tokens via the `/design-tokens` flow (reads vision, determines personality, produces tailored tokens)
+- Inform user: "Created design system. Customize tokens.md as needed."
+
+If it exists and is customized, read it for token names and personality.
 
 ### 2. Create or Update Feature Spec
 
@@ -88,6 +114,12 @@ If this is the first feature (no `.specs/design-system/tokens.md` exists):
 - Preserve existing `status`, `tests`, `components` in frontmatter
 - Set `updated: YYYY-MM-DD`
 
+**When writing scenarios and mockups, use the personas:**
+- Use the primary persona's vocabulary for all labels and copy (their words, not developer words)
+- Match flow length to persona's patience level (Very Low → fewest possible steps)
+- Reference the persona's frustrations as anti-patterns to avoid
+- Ensure the happy path achieves the persona's success metric
+
 ### 3. Create or Update ASCII Mockup
 
 - Add or update `## UI Mockup` section with ASCII art showing:
@@ -95,6 +127,7 @@ If this is the first feature (no `.specs/design-system/tokens.md` exists):
   - Key interactive elements
   - States (default, hover, active, disabled, loading, error)
 - Reference design tokens where applicable
+- Use persona vocabulary in all labels and placeholder text
 
 ### 4. Create Component Stubs
 
@@ -102,19 +135,85 @@ If the mockup references components that don't exist in `.specs/design-system/co
 - Create **stub** files for each new component
 - Stubs include: name, purpose, status "pending implementation"
 
-### 5. Pause Point (Normal Mode Only)
+### 5. Persona Revision Pass
+
+After drafting the spec, re-read it through each persona's eyes and revise:
+
+1. **Walk through the mockup as the primary persona.** Would they understand every label? Would they know what to click first? Would any step make them hesitate or bail?
+
+2. **Check flow length against patience level.**
+   - Very Low: Can the primary task complete in 1-2 interactions?
+   - Low: 2-3 interactions max
+   - Medium: Up to 5 steps is fine
+   - High: Complex flows are acceptable
+
+3. **Check vocabulary.** Scan every label, button, heading, and error message. Replace any developer-speak with the persona's words.
+
+4. **Check against anti-persona.** Is any scenario here really for the anti-persona? Cut it or defer to roadmap.
+
+5. **Revise the spec.** Apply changes directly. Track what you changed so you can report it.
+
+### 6. Add User Journey
+
+Add a brief `## User Journey` section (3-5 lines) showing where this feature sits in the user's workflow. What screen do they come from? Where do they go after?
+
+```markdown
+## User Journey
+
+1. User is on the Dashboard (existing)
+2. Clicks "New Deal" → **sees this feature's form**
+3. Submits → redirected to Deal Detail page (future feature)
+```
+
+This prevents orphaned features with no way in and no way out.
+
+### 7. Pause Point (Normal Mode Only)
 
 **If Normal Mode (no --full flag):**
 - Do NOT write any implementation code
 - Do NOT write tests yet (that's step 2)
 - STOP and wait for user approval
 
+Show the spec summary plus persona revision notes:
+
+```markdown
+## Summary
+
+**Feature**: [Name]
+**Spec File**: `.specs/features/{domain}/{feature}.feature.md`
+**Mode**: [Created new / Updated existing]
+**Design System**: [Created new / Using existing]
+**Personas Referenced**: [Primary: role, Anti: role]
+
+### Scenarios Documented
+1. [Scenario 1] - Happy path
+2. [Scenario 2] - Edge case
+3. [Scenario 3] - Error handling
+
+### Persona Revision Applied
+- [What changed and why — e.g., "Renamed 'Query Parameters' → 'Search Filters' (broker vocabulary)"]
+- [e.g., "Collapsed filter panel by default (Very Low patience — too many options upfront)"]
+- [e.g., "Cut bulk export scenario (anti-persona need, deferred to roadmap)"]
+
+### UI Mockup Created
+- Default state ✅
+- Loading state ✅
+- Error state ✅
+
+### Component Stubs Created
+- `.specs/design-system/components/card.md` (new)
+
+### Open Questions
+- [Question 1]?
+
+---
+
+**Does this look right? Ready to write tests?**
+```
+
 **If Full Mode (--full flag present):**
 - Skip this pause
-- Immediately proceed to write tests (Step 2)
-- Then implement (Step 3)
-- Then run /compound
-- Then commit
+- Immediately proceed to write tests
 
 ---
 
@@ -130,6 +229,7 @@ source: path/to/feature.tsx
 tests: []
 components: []
 design_refs: []
+personas: [primary, anti-persona]
 status: stub    # stub → specced → tested → implemented
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
@@ -139,10 +239,11 @@ updated: YYYY-MM-DD
 
 **Source File**: `path/to/feature.tsx` (planned)
 **Design System**: `.specs/design-system/tokens.md`
+**Personas**: `.specs/personas/primary.md`, `.specs/personas/anti-persona.md`
 
 ## Feature: [Name]
 
-[Brief description of what this feature does]
+[Brief description of what this feature does and who it's for]
 
 ### Scenario: [Happy path name]
 Given [precondition]
@@ -159,6 +260,12 @@ Then [expected result]
 Given [precondition that causes error]
 When [user action]
 Then [error handling behavior]
+
+## User Journey
+
+1. [Where user comes from]
+2. **[This feature]**
+3. [Where user goes next]
 
 ## UI Mockup
 
@@ -198,7 +305,7 @@ Then [error handling behavior]
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  ┌─ Error (border: error, bg: error-light) ─────────────┐   │
-│  │  ⚠️ Error message describing what went wrong         │   │
+│  │  ⚠️ [Error message in persona's language]             │   │
 │  │  [Retry Button]                                      │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -210,77 +317,21 @@ Then [error handling behavior]
 |-----------|--------|------|
 | Button | ✅ Exists | `.specs/design-system/components/button.md` |
 | Card | 📝 Stub created | `.specs/design-system/components/card.md` |
-| Input | 📝 Stub created | `.specs/design-system/components/input.md` |
 
 ## Design Tokens Used
 
 - `color-primary` - Primary action buttons
 - `color-error` - Error states
-- `spacing-md` - Component padding
-- `radius-lg` - Card border radius
+- `spacing-4` - Component padding
+- `radius-md` - Card border radius
 
 ## Open Questions
 
 - [ ] Question about ambiguous requirement?
-- [ ] Clarification needed on edge case?
-
-## Suggested Test Cases
-
-- [ ] Test happy path scenario
-- [ ] Test edge case scenario
-- [ ] Test error handling
-- [ ] Test loading state
-- [ ] Test accessibility (keyboard nav, screen reader)
 
 ## Learnings
 
 <!-- This section grows over time via /compound -->
-<!-- Add patterns, gotchas, and decisions discovered during implementation -->
-```
-
----
-
-## Output Format
-
-After creating or updating the spec, provide this summary:
-
-```markdown
-## Summary
-
-**Feature**: [Name]
-**Spec File**: `.specs/features/{domain}/{feature}.feature.md`
-**Mode**: [Created new / Updated existing]
-**Design System**: [Created new / Using existing]
-
-### Scenarios Documented
-1. [Scenario 1] - Happy path
-2. [Scenario 2] - Edge case
-3. [Scenario 3] - Error handling
-
-### UI Mockup Created
-- Default state ✅
-- Loading state ✅
-- Error state ✅
-
-### Component Stubs Created
-- `.specs/design-system/components/card.md` (new)
-- `.specs/design-system/components/input.md` (new)
-
-### Design Tokens Referenced
-- `color-primary`, `color-error`, `spacing-md`, `radius-lg`
-
-### Open Questions
-- [Question 1]?
-- [Question 2]?
-
-### Suggested Test Cases
-- [ ] Test for scenario 1
-- [ ] Test for scenario 2
-- [ ] Test for scenario 3
-
----
-
-**Does this look right? Ready to write tests?**
 ```
 
 ---
@@ -434,25 +485,22 @@ These signals enable the automated drift-check that runs after your commit.
 ### I Will:
 
 1. **Resolve spec** - Search for existing spec matching "user profile"; if found, UPDATE mode; if not, CREATE mode
-2. **Check design system** - Create if not exists
+2. **Load context** - Read personas (vocabulary, patience level, frustrations), read design tokens (personality, values)
 3. **Create or update spec file**: `.specs/features/users/profile-page.feature.md`
-4. **Write scenarios**:
+4. **Write scenarios** (using persona vocabulary):
    - Display profile information
    - Edit profile (happy path)
    - Edit profile validation errors
    - Avatar upload
    - Cancel editing
-5. **Create ASCII mockups**:
+5. **Create ASCII mockups** (referencing design tokens):
    - View mode
    - Edit mode
    - Loading state
    - Error states
-6. **Create component stubs**:
-   - Avatar component
-   - ProfileForm component
-   - EditableField component
-7. **List design tokens** used
-8. **Identify questions** (image size limits? required fields?)
+6. **Add user journey** (where does this fit in the app?)
+7. **Create component stubs**
+8. **Persona revision pass** — re-read through persona's eyes, revise, note changes
 9. **STOP** and wait for approval (Normal mode) or continue to tests → implement → compound → commit (Full mode)
 
 ---
@@ -465,22 +513,16 @@ When `/spec-first` is the first command on a new project:
 /spec-first landing page with hero section and signup form
 
 [Detecting project state...]
-⚠️ No design system found
+⚠️ No personas found. Run /personas to create user personas for better specs.
+⚠️ No design system found.
 
-Creating default design system:
+Creating design system:
+✓ Read vision.md for context
+✓ Determined personality: Friendly (consumer-facing signup flow)
 ✓ Created .specs/design-system/tokens.md
 ✓ Created .cursor/rules/design-tokens.mdc
 
-You can customize tokens.md before or after implementation.
 Proceeding with feature spec...
 ```
 
-The default design tokens include:
-- Color palette (primary, secondary, neutral, semantic)
-- Typography scale
-- Spacing scale
-- Border radii
-- Shadows
-- Breakpoints
-
-These can be customized at any point—the spec just references token names, not values.
+If vision.md also doesn't exist, the spec will still be written but with generic language. The output will recommend running `/vision` and `/personas` to improve future specs.

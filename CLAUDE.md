@@ -7,11 +7,28 @@ This project uses a spec-driven development workflow. Follow these rules in all 
 **Spec before code.** Define behavior before implementing it.
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   DESIGN    │ ──▶ │    SPEC     │ ──▶ │    TEST     │ ──▶ │ IMPLEMENT   │
-│ (tokens +   │     │ (Gherkin +  │     │  (failing)  │     │ (loop until │
-│  stubs)     │     │  mockup)    │     │             │     │ tests pass) │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+Project setup (once):
+  /vision → /personas → /design-tokens
+
+Per feature:
+  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+  │    SPEC      │ ──▶ │    TEST      │ ──▶ │  IMPLEMENT   │
+  │ (reads       │     │  (failing)   │     │ (loop until  │
+  │  personas +  │     │              │     │  tests pass) │
+  │  tokens,     │     │              │     │              │
+  │  writes      │     │              │     │              │
+  │  Gherkin +   │     │              │     │              │
+  │  mockup,     │     │              │     │              │
+  │  revises via │     │              │     │              │
+  │  persona     │     │              │     │              │
+  │  lens)       │     │              │     │              │
+  └──────┬───────┘     └──────────────┘     └──────┬───────┘
+         │                                         │
+      [PAUSE]                                      ▼
+    user approves                          ┌──────────────┐
+                                           │  COMPOUND    │
+                                           │ (learnings)  │
+                                           └──────────────┘
 ```
 
 ---
@@ -22,13 +39,18 @@ This project uses a spec-driven development workflow. Follow these rules in all 
 .specs/
 ├── vision.md              # App vision (created by /vision or /clone-app)
 ├── roadmap.md             # Feature roadmap (single source of truth)
+├── personas/              # User personas (inform every spec)
+│   ├── primary.md         # Main user persona
+│   ├── secondary.md       # Second user type (if needed)
+│   ├── anti-persona.md    # Who you're NOT building for
+│   └── _template.md       # Template for new personas
 ├── features/              # Gherkin specs with ASCII mockups
 │   └── {domain}/
 │       └── {feature}.feature.md
 ├── test-suites/           # Test documentation
 │   └── {mirrors test dir structure}
 ├── design-system/         # Design tokens and patterns
-│   ├── tokens.md          # Colors, spacing, typography
+│   ├── tokens.md          # Colors, spacing, typography (personality-driven)
 │   └── components/        # Component pattern docs
 │       └── {component}.md
 ├── learnings/             # Cross-cutting patterns by category
@@ -46,6 +68,64 @@ This project uses a spec-driven development workflow. Follow these rules in all 
 
 ---
 
+## Project Setup (Once)
+
+These are created once and inform every feature:
+
+| Command | Creates | Purpose |
+|---------|---------|---------|
+| `/vision` | `.specs/vision.md` | App purpose, users, tech stack, design principles |
+| `/personas` | `.specs/personas/*.md` | Who uses this (vocabulary, patience, frustrations) |
+| `/design-tokens` | `.specs/design-system/tokens.md` | Personality-driven tokens derived from vision + personas |
+
+All three are optional but improve every spec. `/spec-first` will note what's missing.
+
+---
+
+## Personas
+
+User personas live in `.specs/personas/` and are loaded before every spec.
+
+**What they contain:**
+- **Vocabulary** — their words vs developer words → drives all UI labels
+- **Patience level** — Very Low / Low / Medium / High → drives flow length
+- **Frustrations** — patterns to avoid
+- **Success metric** — how they measure if the app works
+
+**How they're used:** `/spec-first` reads personas before writing, uses their vocabulary in Gherkin and mockups, then re-reads the draft through persona eyes and revises. The revision notes appear at the pause point so you see what changed.
+
+Most projects need 2: a primary persona and an anti-persona (who you're NOT building for).
+
+---
+
+## Design System
+
+Design tokens are in `.specs/design-system/tokens.md`, created by `/design-tokens`.
+
+### How It Works
+
+`/design-tokens` doesn't stamp a generic template. It:
+1. Reads vision + personas for context
+2. Determines a **personality** (Professional / Friendly / Minimal / Bold / Technical)
+3. Derives a tailored palette from personality + brand color
+4. Constrains to v1 minimums (fewer tokens = more consistency)
+5. Writes rationale explaining the choices
+
+### Token Reference
+
+When implementing UI, use token names from `tokens.md` (not hardcoded values). The specific tokens depend on the project — read `tokens.md` for the actual names and values.
+
+**Common categories:** Colors (primary, neutrals, semantic), Typography (1 font family, 4-5 sizes, 3 weights), Spacing (6 values), Radii (3 + full), Shadows (2).
+
+### Design System Maintenance
+
+`.specs/design-system/tokens.md` is the source of truth. When tokens change:
+1. Update `tokens.md`
+2. Update `.cursor/rules/design-tokens.mdc` if token names changed
+3. Update affected component documentation
+
+---
+
 ## When Implementing Features
 
 ### /spec-first: Create vs Update
@@ -54,19 +134,22 @@ This project uses a spec-driven development workflow. Follow these rules in all 
 
 1. **Resolve spec**: Search `.specs/features/**/*.feature.md` for a spec matching the feature name (by path or frontmatter `feature:`)
 2. **If match found** → UPDATE mode: revise scenarios and mockup, preserve status/tests/components. With `--full`, continues through tests → implement → compound → commit
-3. **If no match** → CREATE mode: create new spec with Gherkin + ASCII mockup
+3. **If no match** → CREATE mode: load personas + tokens, create new spec with Gherkin + ASCII mockup + user journey, revise through persona lens
 
 ### For New Features
 1. Run `/spec-first {feature}` — it will CREATE a spec if none exists
-2. Reference design tokens in mockups
-3. Create component stubs for new UI components
-4. **STOP for approval** before writing tests (unless `--full`)
-5. Write failing tests
-6. Implement until tests pass
-7. Fill in component documentation
+2. Loads personas and design tokens before writing
+3. Writes Gherkin using persona vocabulary
+4. Creates ASCII mockup referencing design tokens
+5. Adds user journey (where this feature fits in the flow)
+6. Runs persona revision pass, notes changes
+7. **STOP for approval** before writing tests (unless `--full`)
+8. Write failing tests
+9. Implement until tests pass
+10. Fill in component documentation
 
 ### For Existing Features
-1. Run `/spec-first {feature}` — it will UPDATE the spec if one exists (matched by name or path)
+1. Run `/spec-first {feature}` — it will UPDATE the spec if one exists
 2. Or read the spec first and update manually if behavior changes
 3. Update tests to match
 4. Update `.specs/mapping.md` (or run `./scripts/generate-mapping.sh`)
@@ -100,71 +183,47 @@ After tests written: "Tests written (failing). Ready to implement?"
 Every feature spec should include:
 
 ```markdown
+---
+feature: Feature Name
+domain: domain-name
+source: path/to/source.tsx
+tests: []
+components: []
+personas: [primary, anti-persona]
+status: stub | specced | tested | implemented
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+---
+
 # Feature Name
 
 **Source File**: path/to/file.tsx
 **Design System**: .specs/design-system/tokens.md
+**Personas**: .specs/personas/primary.md
 
 ## Feature: [Name]
+
+[Who it's for and what problem it solves]
 
 ### Scenario: [Happy path]
 Given [precondition]
 When [action]
 Then [expected result]
 
-### Scenario: [Edge case]
-...
+## User Journey
+
+1. [Where user comes from]
+2. **[This feature]**
+3. [Where user goes next]
 
 ## UI Mockup
 
-(ASCII art showing component layout)
+(ASCII art using persona vocabulary and design tokens)
 
 ## Component References
 
 - Button: .specs/design-system/components/button.md
 ```
-
----
-
-## Design System
-
-This project uses design tokens defined in `.specs/design-system/tokens.md`.
-
-### Token Reference
-
-When implementing UI, use these token names (not hardcoded values):
-
-**Colors:**
-- `color-primary`, `color-secondary` - Brand colors
-- `color-background`, `color-surface` - Backgrounds
-- `color-text`, `color-text-secondary` - Text
-- `color-error`, `color-success`, `color-warning` - Semantic
-
-**Typography:**
-- `text-xs` through `text-5xl` - Font sizes
-- `font-normal`, `font-medium`, `font-semibold`, `font-bold` - Weights
-
-**Spacing:**
-- `spacing-1` through `spacing-16` - Spacing scale
-
-**Border Radius:**
-- `radius-sm`, `radius-md`, `radius-lg`, `radius-xl`, `radius-full`
-
-**Shadows:**
-- `shadow-sm`, `shadow-md`, `shadow-lg`, `shadow-xl`
-
-### Design System Maintenance
-
-The token summary above should stay in sync with `.specs/design-system/tokens.md`.
-
-When design tokens change:
-1. Update `.specs/design-system/tokens.md` (source of truth)
-2. Update the token summary in this CLAUDE.md file
-3. Update any affected component documentation
-
-When new components are created:
-1. Create stub in `.specs/design-system/components/`
-2. After implementation, fill in with `/design-component`
 
 ---
 
@@ -194,6 +253,9 @@ When new components are created:
 | Command | Purpose |
 |---------|---------|
 | `/spec-init` | Bootstrap on existing codebase |
+| `/vision` | Create or update vision.md |
+| `/personas` | Create or update user personas |
+| `/design-tokens` | Create or update design tokens (personality-driven) |
 | `/spec-first` | Create or update spec + mockup (auto-detects create vs update) |
 | `/spec-first --full` | Create/update spec AND build without pauses (full TDD cycle) |
 
@@ -208,7 +270,6 @@ When new components are created:
 ### Roadmap Commands
 | Command | Purpose |
 |---------|---------|
-| `/vision` | Create or update vision.md from description, Jira, or Confluence |
 | `/roadmap` | Create, update, or restructure roadmap.md |
 | `/clone-app <url>` | Analyze app → create vision.md + roadmap.md |
 | `/build-next` | Build next pending feature from roadmap |
@@ -217,7 +278,7 @@ When new components are created:
 ### Design System
 | Command | Purpose |
 |---------|---------|
-| `/design-tokens` | Create or update design tokens |
+| `/design-tokens` | Create or update design tokens (personality-driven) |
 | `/design-component` | Document a component pattern |
 
 ### Bug Fixing and Refactoring
@@ -259,6 +320,7 @@ When new components are created:
 
 When working with specs, always tell the user:
 - Which spec files you're reading/creating/updating
+- Which persona files you're reading
 - Which design system files you're referencing
 - Any gaps between specs and tests
 - Component stubs that need documentation
@@ -271,6 +333,7 @@ When working with specs, always tell the user:
 |------|----------|
 | App vision | `.specs/vision.md` |
 | Build roadmap | `.specs/roadmap.md` |
+| User personas | `.specs/personas/*.md` |
 | Feature specs | `.specs/features/{domain}/{feature}.feature.md` |
 | Test suite docs | `.specs/test-suites/{mirrors test dir}` |
 | Design tokens | `.specs/design-system/tokens.md` |
@@ -302,6 +365,9 @@ tests:
   - path/to/test.ts
 components:
   - ComponentName
+personas:
+  - primary
+  - anti-persona
 status: stub | specced | tested | implemented
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
@@ -363,30 +429,17 @@ Status symbols:
 - ⏸️ Blocked
 - ❌ Cancelled
 
-### Creating and Updating
-
-| Command | Purpose |
-|---------|---------|
-| `/vision` | Create or update vision.md from description, Jira, or Confluence |
-| `/roadmap` | Create, add features, reprioritize, or check status |
-| `/roadmap add "feature"` | Add a feature or phase to existing roadmap |
-| `/roadmap reprioritize` | Restructure phases and reorder features |
-| `/roadmap status` | Read-only progress report |
-| `/clone-app <url>` | Analyze a live app → create both vision.md + roadmap.md |
-
 ### Building from Roadmap
 
 1. `/vision` or `/clone-app` creates vision.md
-2. `/roadmap` or `/clone-app` creates roadmap.md
-3. `/build-next` picks next pending feature (deps met)
-4. Runs `/spec-first --full` to build it (includes self-check drift)
-5. Build loop runs fresh-agent drift check (Layer 2)
-6. Updates roadmap status
-7. Repeat until done
-
-### Triage
-
-`/roadmap-triage` scans Slack/Jira and adds items to the "Ad-hoc Requests" section of roadmap.md.
+2. `/personas` creates persona files (from vision's target users)
+3. `/design-tokens` creates personality-driven tokens (from vision + personas)
+4. `/roadmap` or `/clone-app` creates roadmap.md
+5. `/build-next` picks next pending feature (deps met)
+6. Runs `/spec-first --full` to build it (includes self-check drift)
+7. Build loop runs fresh-agent drift check (Layer 2)
+8. Updates roadmap status
+9. Repeat until done
 
 ---
 

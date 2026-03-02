@@ -2,6 +2,8 @@
 
 A framework for AI-assisted development that combines:
 - **Spec-Driven Development (SDD)** - Define behavior before implementing
+- **User Personas** - Specs are written in users' language, scoped to their patience
+- **Personality-Driven Design** - Design system derived from vision, not generic templates
 - **Compound Learning** - Agent gets smarter from every session
 - **Roadmap-Driven Automation** - Build entire apps feature-by-feature
 - **Overnight Automation** - Wake up to draft PRs
@@ -29,7 +31,7 @@ This copies all SDD files into your current project:
 - `VERSION` - Framework version (semver, e.g. 2.0.0)
 - `.cursor/` - Cursor rules, commands, hooks
 - `.claude/` - Claude Code commands
-- `.specs/` - Feature specs, learnings, design system, roadmap
+- `.specs/` - Feature specs, learnings, design system, personas, roadmap
 - `scripts/` - Automation scripts
 - `CLAUDE.md` - Agent instructions
 
@@ -81,37 +83,68 @@ nano .env.local
 After installing, use the slash commands:
 
 ```
-/spec-first user authentication    # Create a feature spec
+/vision "CRM for real estate"      # Define what you're building
+/personas                          # Create user personas (vocabulary, patience, frustrations)
+/design-tokens                     # Create personality-driven design system
+/spec-first user authentication    # Create a feature spec (informed by personas + tokens)
 /compound                          # Extract learnings after implementing
-/vision "CRM for real estate"      # Create a vision doc from description
 /roadmap create                    # Create a roadmap from the vision
-/clone-app https://example.com     # Clone an app into vision + roadmap
 /build-next                        # Build next feature from roadmap
 ```
 
 ## The Workflows
 
-### Manual: Single Feature
+### Project Setup (Once)
+
+Before building features, set up the project-level infrastructure. Each step reads the output of the previous:
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   DESIGN    │ ──▶ │    SPEC     │ ──▶ │    TEST     │ ──▶ │ IMPLEMENT   │
-│ (tokens)    │     │ (Gherkin)   │     │  (failing)  │     │   (code)    │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-                                                                   │
-                                                                   ▼
-                                                            ┌─────────────┐
-                                                            │  /compound  │
-                                                            │ (learnings) │
-                                                            └─────────────┘
+/vision "description"  →  /personas  →  /design-tokens
+     │                        │               │
+     ▼                        ▼               ▼
+ vision.md              personas/         tokens.md
+ (app purpose,          (vocabulary,      (personality-driven
+  users, tech)           patience,         colors, spacing,
+                         frustrations)     typography)
 ```
+
+All three are optional but improve every spec. `/spec-first` will note what's missing.
+
+### Per Feature: Spec → Test → Implement
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│    SPEC      │ ──▶ │    TEST      │ ──▶ │  IMPLEMENT   │
+│              │     │  (failing)   │     │ (loop until  │
+│ Reads:       │     │              │     │  tests pass) │
+│ - personas   │     │              │     │              │
+│ - tokens     │     │              │     │              │
+│              │     │              │     │              │
+│ Writes:      │     │              │     │              │
+│ - Gherkin    │     │              │     │              │
+│ - mockup     │     │              │     │              │
+│ - journey    │     │              │     │              │
+│              │     │              │     │              │
+│ Then:        │     │              │     │              │
+│ - persona    │     │              │     │              │
+│   revision   │     │              │     │              │
+└──────┬───────┘     └──────────────┘     └──────┬───────┘
+       │                                         │
+    [PAUSE]                                      ▼
+  user approves                          ┌──────────────┐
+                                         │  /compound   │
+                                         │ (learnings)  │
+                                         └──────────────┘
+```
+
+The SPEC step loads personas and design tokens, writes Gherkin scenarios using the user's vocabulary, creates ASCII mockups referencing design tokens, then re-reads the draft through the persona's eyes and revises. The revision notes appear at the pause point so you see what changed and why.
 
 ### Roadmap: Full App Build
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  /vision    │ ──▶ │  /roadmap   │ ──▶ │ /build-next │ ──▶ │   repeat    │
-│ (describe)  │     │  (plan)     │     │  (build)    │     │  until done │
+│  /vision    │ ──▶ │  /personas  │ ──▶ │  /roadmap   │ ──▶ │ /build-next │
+│ (describe)  │     │ + /tokens   │     │  (plan)     │     │  (repeat)   │
 └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
 
 Or from an existing app:
@@ -126,7 +159,7 @@ Or from an existing app:
 ```
 11:00 PM  /roadmap-triage (scan Slack/Jira → add to roadmap)
           /build-next × MAX_FEATURES (build from roadmap)
-            └─ Each feature: build → tests → drift check → [code review] → commit
+            └─ Each feature: spec (with personas) → tests → implement → drift check → [code review] → commit
           Create draft PRs
  7:00 AM  You review 3-4 draft PRs (specs verified against code)
 ```
@@ -169,20 +202,27 @@ Every feature build goes through a multi-stage pipeline. Each agent-based step r
 
 ## Slash Commands
 
+### Setup
+
+| Command | Purpose |
+|---------|---------|
+| `/vision` | Create or update vision.md from description, Jira, or Confluence |
+| `/personas` | Create user personas (vocabulary, patience, frustrations, anti-persona) |
+| `/design-tokens` | Create personality-driven design tokens (reads vision + personas) |
+| `/spec-init` | Bootstrap SDD on existing codebase |
+
 ### Core Workflow
 
 | Command | Purpose |
 |---------|---------|
-| `/spec-first` | Create or update feature spec with Gherkin + ASCII mockup |
+| `/spec-first` | Create or update feature spec with Gherkin + ASCII mockup (persona-informed) |
 | `/spec-first --full` | Create/update spec AND build without pauses (full TDD cycle) |
 | `/compound` | Extract learnings from current session |
-| `/spec-init` | Bootstrap SDD on existing codebase |
 
 ### Roadmap Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/vision` | Create or update vision.md from description, Jira, or Confluence |
 | `/roadmap` | Create, add features, reprioritize, or check status |
 | `/clone-app <url>` | Analyze app → create vision.md + roadmap.md |
 | `/build-next` | Build next pending feature from roadmap |
@@ -197,6 +237,45 @@ Every feature build goes through a multi-stage pipeline. Each agent-based step r
 | `/check-coverage` | Find gaps in spec/test coverage |
 | `/fix-bug` | Create regression test for bug |
 | `/code-review` | Review against engineering standards |
+
+## Personas
+
+User personas live in `.specs/personas/` and inform every feature spec. They're created once by `/personas` (or auto-suggested on first `/spec-first`) and referenced before every spec is written.
+
+**What they contain:**
+- **Vocabulary** — their words vs developer words → drives all UI labels
+- **Patience level** — Very Low / Low / Medium / High → drives flow length
+- **Frustrations** — interaction patterns to avoid
+- **Success metric** — how they measure if the app works
+
+**How `/spec-first` uses them:**
+1. Reads personas before writing Gherkin and mockups
+2. Uses persona vocabulary in all labels and copy
+3. Matches flow length to patience level
+4. After drafting, re-reads through persona's eyes and revises
+5. Shows revision notes at the pause point ("renamed X → Y because broker vocabulary")
+
+**Anti-persona** — describes who you're NOT building for. Prevents scope creep. If a scenario is really for the anti-persona, it gets cut or deferred.
+
+## Design System
+
+The design system lives in `.specs/design-system/tokens.md` and is created by `/design-tokens`.
+
+Unlike generic design token templates, `/design-tokens` derives a **tailored** system:
+
+1. **Reads context** — vision.md (app purpose, design principles), personas (patience, technical level)
+2. **Determines personality** — Professional, Friendly, Minimal, Bold, or Technical
+3. **Derives palette** — starts from one primary color, derives neutrals (tinted, not pure gray), semantic colors matched to palette energy
+4. **Constrains to v1** — fewer tokens used consistently beats many tokens used randomly
+5. **Documents rationale** — explains *why* these choices, not just what they are
+
+| Personality | Radii | Spacing | Example Apps |
+|-------------|-------|---------|-------------|
+| Professional | 2-6px | Tight (4px base) | Linear, Jira |
+| Friendly | 8-12px | Comfortable (8px base) | Notion, Slack |
+| Minimal | 4-8px | Generous whitespace | iA Writer, Apple |
+| Bold | 12-16px+ | Generous | Stripe, Vercel |
+| Technical | 0-4px | Tight-compact | GitHub, Grafana |
 
 ## Directory Structure
 
@@ -215,11 +294,17 @@ Every feature build goes through a multi-stage pipeline. Each agent-based step r
 ├── .specs/
 │   ├── vision.md           # App vision (created by /vision or /clone-app)
 │   ├── roadmap.md          # Feature roadmap (single source of truth)
+│   ├── personas/           # User personas (inform every spec)
+│   │   ├── primary.md      # Main user persona
+│   │   ├── anti-persona.md # Who you're NOT building for
+│   │   └── _template.md    # Template for new personas
 │   ├── features/           # Feature specs (Gherkin + ASCII mockups)
 │   │   └── {domain}/
 │   │       └── {feature}.feature.md
 │   ├── test-suites/        # Test documentation
-│   ├── design-system/      # Design tokens + component docs
+│   ├── design-system/      # Personality-driven tokens + component docs
+│   │   ├── tokens.md       # Colors, spacing, typography (with rationale)
+│   │   └── components/     # Component pattern docs
 │   ├── learnings/          # Cross-cutting patterns by category
 │   │   ├── index.md        # Summary + recent learnings
 │   │   ├── testing.md
@@ -367,7 +452,7 @@ REVIEW_MODEL=""               # Code-review agent
 
 ## Feature Spec Format
 
-Every feature spec has YAML frontmatter:
+Every feature spec has YAML frontmatter and references personas:
 
 ```markdown
 ---
@@ -378,6 +463,9 @@ tests:
   - tests/auth/login.test.ts
 components:
   - LoginForm
+personas:
+  - primary
+  - anti-persona
 status: implemented
 created: 2026-01-31
 updated: 2026-01-31
@@ -385,12 +473,20 @@ updated: 2026-01-31
 
 # User Login
 
+**Personas**: .specs/personas/primary.md
+
 ## Scenarios
 
 ### Scenario: Successful login
-Given user is on login page
-When user enters valid credentials
-Then user is redirected to dashboard
+Given user is on the login page
+When user enters their email and password
+Then user sees their dashboard
+
+## User Journey
+
+1. User lands on marketing page (existing)
+2. **Clicks "Log in" → sees this login form**
+3. Submits → redirected to Dashboard (feature #5)
 
 ## UI Mockup
 
@@ -477,15 +573,19 @@ git auto
 # 2. Define what you're building
 /vision "A task management app for small teams with projects, labels, and due dates"
 
-# 3. Create the build plan
+# 3. Create personas and design system
+/personas                    # Creates primary persona + anti-persona
+/design-tokens               # Derives personality-driven tokens from vision + personas
+
+# 4. Create the build plan
 /roadmap create
 
-# 4. Build feature by feature
-/build-next    # Builds feature #1
+# 5. Build feature by feature
+/build-next    # Builds feature #1 (spec uses persona vocabulary + design tokens)
 /build-next    # Builds feature #2
 # ...or let overnight automation handle it
 
-# 5. Check progress
+# 6. Check progress
 /roadmap status
 ```
 
@@ -504,7 +604,11 @@ git auto
 # - .specs/vision.md (app description)
 # - .specs/roadmap.md (20 features across 3 phases)
 
-# 3. Build feature by feature
+# 3. Create personas and design system
+/personas                    # From vision's target users
+/design-tokens               # From vision + personas
+
+# 4. Build feature by feature
 /build-next    # Builds feature #1
 /build-next    # Builds feature #2
 ```

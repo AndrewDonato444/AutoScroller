@@ -73,12 +73,27 @@ If no features are ready:
 
 Before building, load relevant context:
 
+### Read Personas
+```
+Read .specs/personas/*.md for:
+- Primary persona: vocabulary, patience level, frustrations, success metric
+- Anti-persona: what NOT to build (prevents scope creep)
+These drive Gherkin language, flow complexity, and UI labels.
+```
+
 ### Read Vision
 ```
 Read .specs/vision.md for:
 - App purpose
 - Tech stack
 - Design principles
+```
+
+### Read Design System
+```
+Read .specs/design-system/tokens.md for:
+- Personality (Professional/Friendly/Minimal/Bold/Technical)
+- Token names and values
 ```
 
 ### Read Related Specs

@@ -582,7 +582,9 @@ Run the /build-next command to find the next feature, then create the spec ONLY:
 2. Check that all dependencies are completed
 3. If a feature is ready:
    - Update roadmap to mark it 🔄 in progress
+   - Load context: read .specs/personas/*.md (user vocabulary, patience level), .specs/design-system/tokens.md (personality, token names), .specs/vision.md
    - Run /spec-first {feature} (WITHOUT --full) — create or update the spec only, do NOT implement
+   - Use persona vocabulary in all Gherkin scenarios and mockup labels
    - Do NOT write tests, do NOT implement, do NOT commit yet
    - Regenerate mapping: run ./scripts/generate-mapping.sh
 4. If no features are ready, output: NO_FEATURES_READY

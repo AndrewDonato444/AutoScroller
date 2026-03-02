@@ -7,6 +7,7 @@ alwaysApply: true
 
 This project uses a specs-driven workflow. The `.specs/` directory contains:
 - `features/` - Gherkin feature specifications with ASCII mockups
+- `personas/` - User personas that inform every spec
 - `test-suites/` - Documentation of what each test file covers
 - `design-system/` - Design tokens and component patterns
 - `learnings/` - Cross-cutting patterns by category
@@ -46,13 +47,18 @@ If user includes "full", "auto", "no stops", or "don't pause":
 
 ```
 .specs/
+├── personas/              # User personas (inform every spec)
+│   ├── primary.md         # Main user persona
+│   ├── secondary.md       # Second user type (if needed)
+│   ├── anti-persona.md    # Who you're NOT building for
+│   └── _template.md       # Template for new personas
 ├── features/              # Gherkin specs with ASCII mockups
 │   └── {domain}/
 │       └── {feature}.feature.md
 ├── test-suites/           # Test documentation
 │   └── {mirrors test dir structure}
 ├── design-system/         # Design tokens and patterns
-│   ├── tokens.md          # Colors, spacing, typography
+│   ├── tokens.md          # Colors, spacing, typography (personality-driven)
 │   └── components/        # Component pattern docs
 │       └── {component}.md
 ├── learnings/             # Cross-cutting patterns (by category)
@@ -70,97 +76,80 @@ If user includes "full", "auto", "no stops", or "don't pause":
 
 ---
 
-## Workflow: Greenfield vs Existing
+## Project Setup (Once)
+
+These are project-level infrastructure created once and referenced by every feature:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ GREENFIELD (New Project)                                                │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  git sdd (clone template) → /spec-first {feature}                       │
-│                                   │                                     │
-│                    ┌──────────────┼──────────────┐                      │
-│                    ▼              ▼              ▼                      │
-│              Create/detect   Create/update spec   Create/update ASCII   │
-│              design tokens   with Gherkin         mockup                │
-│                    │              │              │                      │
-│                    └──────────────┴──────────────┘                      │
-│                                   │                                     │
-│                                   ▼                                     │
-│                            STOP for approval                            │
-│                                   │                                     │
-│                                   ▼                                     │
-│                         Write failing tests                             │
-│                                   │                                     │
-│                                   ▼                                     │
-│                         Implement until pass                            │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────┐
-│ EXISTING PROJECT                                                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  git sdd (clone template) → /spec-init                                  │
-│                                   │                                     │
-│                    ┌──────────────┼──────────────┐                      │
-│                    ▼              ▼              ▼                      │
-│              Detect env      Scan codebase  Detect existing             │
-│              & test runner   for files      design system               │
-│                    │              │              │                      │
-│                    └──────────────┴──────────────┘                      │
-│                                   │                                     │
-│                                   ▼                                     │
-│                    Loop: document each file                             │
-│                    (spec → test doc → mapping)                          │
-│                                   │                                     │
-│                                   ▼                                     │
-│                         Verify 100% coverage                            │
-│                                   │                                     │
-│                                   ▼                                     │
-│                    Then use /spec-first for new features                │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+/vision → creates .specs/vision.md (app purpose, target users, tech stack)
+    │
+    ├──▶ /personas → creates .specs/personas/ (who uses this, who doesn't)
+    │
+    └──▶ /design-tokens → creates .specs/design-system/tokens.md
+                          (reads vision + personas to derive personality + values)
 ```
+
+All three are optional but improve every spec that follows. `/spec-first` will note what's missing and still work without them.
 
 ---
 
-## The Core Loop (TDD + Design + Learning)
+## The Core Loop (Per Feature)
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   DESIGN    │ ──▶ │    SPEC     │ ──▶ │    TEST     │ ──▶ │ IMPLEMENT   │
-│ (tokens +   │     │ (Gherkin +  │     │  (failing)  │     │ (loop until │
-│  stubs)     │     │  mockup)    │     │             │     │ tests pass) │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-       │                                                            │
-       │                    ┌───────────────────────────────────────┘
-       │                    │
-       │                    ▼
-       │            ┌─────────────┐     ┌─────────────┐
-       └────────────│  Document   │ ──▶ │  COMPOUND   │
-                    │  component  │     │ (learnings) │
-                    └─────────────┘     └─────────────┘
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│    SPEC      │ ──▶ │    TEST      │ ──▶ │  IMPLEMENT   │
+│              │     │  (failing)   │     │ (loop until  │
+│ Reads:       │     │              │     │  tests pass) │
+│ - personas   │     │              │     │              │
+│ - tokens     │     │              │     │              │
+│              │     │              │     │              │
+│ Writes:      │     │              │     │              │
+│ - Gherkin    │     │              │     │              │
+│ - mockup     │     │              │     │              │
+│ - journey    │     │              │     │              │
+│              │     │              │     │              │
+│ Then:        │     │              │     │              │
+│ - persona    │     │              │     │              │
+│   revision   │     │              │     │              │
+└──────┬───────┘     └──────────────┘     └──────┬───────┘
+       │                                         │
+    [PAUSE]                                      ▼
+  user approves                          ┌──────────────┐
+                                         │  COMPOUND    │
+                                         │ (learnings)  │
+                                         └──────────────┘
 ```
 
-### Step by Step:
+### What happens in the SPEC step:
 
-1. **DESIGN** - On first feature, create design tokens. For new components, create stubs.
-2. **SPEC** - Create Gherkin scenarios + ASCII mockup referencing design system
-3. **TEST** - Write failing tests covering all scenarios
-4. **IMPLEMENT** - Code until tests pass
-5. **DOCUMENT** - Fill in component stubs with actual implementation details
-6. **COMPOUND** - (Optional) Run `/compound` to extract learnings from the session
+1. **Load context** — Read personas and design tokens
+2. **Write Gherkin** — Scenarios using persona vocabulary, matching patience level
+3. **Write mockup** — ASCII art referencing design tokens
+4. **Add user journey** — Where this feature fits in the user's flow
+5. **Persona revision** — Re-read through persona's eyes, revise, note changes
+6. **Create component stubs** — For any new UI components
+7. **Pause** — Show spec + revision notes, wait for approval
 
 ---
 
-## Design System Integration
+## Design System
+
+The design system is created once by `/design-tokens` and informed by vision + personas.
+
+### How `/design-tokens` Works
+
+It doesn't stamp a generic template. It:
+1. Reads `.specs/vision.md` and `.specs/personas/` for context
+2. Determines a **personality** (Professional / Friendly / Minimal / Bold / Technical)
+3. Derives a **tailored palette** from the personality + brand color
+4. Constrains to **v1 minimums** (fewer tokens, add more later)
+5. Writes rationale explaining why these choices were made
 
 ### When `/spec-first` Runs on Greenfield
 
 If no design system exists:
-1. Auto-create `.specs/design-system/tokens.md` with sensible defaults
-2. Create `.cursor/rules/design-tokens.mdc` (generated Cursor rule)
+1. Auto-create via `/design-tokens` flow (reads whatever context exists)
+2. Create `.cursor/rules/design-tokens.mdc` cursor rule
 3. Proceed with feature spec
 
 ### When a Spec References New Components
@@ -170,14 +159,30 @@ If ASCII mockup references a component that doesn't exist in `.specs/design-syst
 2. Stub includes: name, purpose, "pending implementation" status
 3. After implementation, stub gets filled in (manually or via `/document-component`)
 
-### Design System File Locations
+---
 
-| File | Purpose |
-|------|---------|
-| `.specs/design-system/tokens.md` | Colors, spacing, typography, radii, shadows |
-| `.specs/design-system/components/{name}.md` | Component patterns and variants |
-| `.specs/design-system/layouts/{name}.md` | Page/section layout patterns |
-| `.cursor/rules/design-tokens.mdc` | Cursor rule enforcing token usage |
+## Personas
+
+User personas live in `.specs/personas/` and inform every feature spec.
+
+### What They Contain
+- **Context**: How the user spends their day, devices, technical level
+- **Vocabulary**: Their words vs developer words (drives UI labels)
+- **Patience level**: Very Low / Low / Medium / High (drives flow length)
+- **Frustrations**: Interaction patterns to avoid
+- **Success metric**: How they measure if the app works
+
+### How `/spec-first` Uses Them
+
+**Before writing**: Loads persona vocabulary, patience level, and frustrations. This shapes the Gherkin scenarios, mockup labels, and flow complexity from the start.
+
+**After writing**: Re-reads the spec through each persona's eyes. Revises vocabulary, simplifies flows, cuts anti-persona features. Reports what changed at the pause point.
+
+### Creating Personas
+
+Run `/personas` or they're auto-suggested on first `/spec-first` run. Most projects need 2:
+- **Primary**: The main user. Every feature must work for them.
+- **Anti-persona**: Who you're NOT building for. Prevents scope creep.
 
 ---
 
@@ -193,6 +198,7 @@ source: path/to/file.tsx
 tests: []
 components: []
 design_refs: []
+personas: [primary, anti-persona]
 status: stub    # stub → specced → tested → implemented
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
@@ -202,8 +208,11 @@ updated: YYYY-MM-DD
 
 **Source File**: `path/to/file.tsx`
 **Design System**: `.specs/design-system/tokens.md`
+**Personas**: `.specs/personas/primary.md`
 
 ## Feature: [Name]
+
+[Brief description — who it's for and what problem it solves]
 
 ### Scenario: [Happy path]
 Given [precondition]
@@ -215,18 +224,15 @@ Given [precondition]
 When [action]
 Then [expected result]
 
+## User Journey
+
+1. [Where user comes from]
+2. **[This feature]**
+3. [Where user goes next]
+
 ## UI Mockup
 
-```
-┌─────────────────────────────────────────┐
-│  Component layout with ASCII art        │
-│                                         │
-│  ┌─────────┐  ┌─────────────────────┐   │
-│  │  Image  │  │ Text content        │   │
-│  └─────────┘  │ [Button (primary)]  │   │
-│               └─────────────────────┘   │
-└─────────────────────────────────────────┘
-```
+(ASCII art referencing design tokens, using persona vocabulary)
 
 ## Component References
 
@@ -245,6 +251,7 @@ Then [expected result]
 | `status` | stub → specced → tested → implemented | Each workflow stage |
 | `tests` | Array of test file paths | After writing tests |
 | `components` | Array of component names | After implementation |
+| `personas` | Array of persona names referenced | Spec creation |
 | `updated` | Last modified date | Any change |
 
 ---
@@ -257,6 +264,9 @@ Then [expected result]
 |---------|---------|-------------|
 | `/spec-init` | Bootstrap on existing codebase | First time on existing project |
 | `/spec-first` | Create or update spec + mockup (auto-detects) | Starting or updating any feature |
+| `/vision` | Create or update vision.md | Setting app direction |
+| `/personas` | Create or update user personas | Before first feature (or anytime) |
+| `/design-tokens` | Create or update design tokens | Before first feature (or anytime) |
 
 ### Core Workflow Commands
 
@@ -271,7 +281,6 @@ Then [expected result]
 
 | Command | Purpose |
 |---------|---------|
-| `/vision` | Create or update vision.md from description, Jira, or Confluence |
 | `/roadmap` | Create, add features, reprioritize, or check roadmap status |
 | `/clone-app <url>` | Analyze app → create vision.md + roadmap.md |
 | `/build-next` | Build next pending feature from roadmap |
@@ -281,7 +290,7 @@ Then [expected result]
 
 | Command | Purpose |
 |---------|---------|
-| `/design-tokens` | Create or update design tokens |
+| `/design-tokens` | Create or update design tokens (personality-driven) |
 | `/design-component` | Document a component pattern (fill in stub) |
 
 ### Bug Fixing & Refactoring
@@ -351,6 +360,7 @@ New components/modules should get a 2-3 letter prefix.
 
 | Type | Location |
 |------|----------|
+| User personas | `.specs/personas/*.md` |
 | Feature specs | `.specs/features/{domain}/{feature}.feature.md` |
 | Test suite docs | `.specs/test-suites/{mirrors test directory}` |
 | Design tokens | `.specs/design-system/tokens.md` |
@@ -379,6 +389,7 @@ This prevents merge conflicts when multiple PRs touch different features.
 When working with specs, always tell the user:
 - Which spec files you're reading
 - Which spec files you're creating/updating
+- Which persona files you're reading
 - Which design system files you're creating/referencing
 - Any gaps between specs and tests
 - Component stubs that need to be filled in
