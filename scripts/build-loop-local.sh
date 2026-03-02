@@ -103,8 +103,16 @@ if [ -f "$PROJECT_DIR/.env.local" ]; then
             key="${BASH_REMATCH[1]}"
             [[ -n "${!key+x}" ]] && continue
             value="${BASH_REMATCH[2]}"
-            value="${value%\"}"; value="${value#\"}"
-            value="${value%\'}"; value="${value#\'}"
+            # Handle quoted values (strip quotes, ignore anything after closing quote)
+            if [[ "$value" =~ ^\"([^\"]*)\" ]]; then
+                value="${BASH_REMATCH[1]}"
+            elif [[ "$value" =~ ^\'([^\']*)\' ]]; then
+                value="${BASH_REMATCH[1]}"
+            else
+                # Unquoted: strip inline comments and trailing whitespace
+                value="${value%%#*}"
+                value="${value%"${value##*[![:space:]]}"}"
+            fi
             export "$key=$value"
         fi
     done < "$PROJECT_DIR/.env.local"
