@@ -167,6 +167,39 @@ When implementing UI, use token names from `tokens.md` (not hardcoded values). T
 4. Fix the bug
 5. Document the new test
 
+### Documenting an Existing Codebase
+
+For documenting a codebase that was built without specs, use the doc-loop workflow:
+
+```
+/spec-init                              # Discovery only: creates doc-queue.md
+  ↓ (review the queue)
+./scripts/doc-loop-local.sh --continue  # Processes queue with fresh agent per item
+```
+
+Or headless (discovery + processing in one go):
+```
+./scripts/doc-loop-local.sh             # Does its own discovery, then loops
+```
+
+**Philosophy: Document, don't fix.**
+- Tests are written to pass against current code (documenting reality)
+- If tests fail after one retry, log the finding and move on
+- Pre-existing test failures are recorded as baseline, not fixed
+- Source code is never modified during documentation
+
+**How it works:**
+1. **Discovery**: Scans codebase, groups files by domain, creates `.specs/doc-queue.md`
+2. **Doc loop**: For each queue item, spawns a fresh agent that runs `/document-code` in batch mode
+3. **Verification**: Runs test suite, reports final coverage
+
+Each queue item gets a fresh agent context, so quality stays consistent even for large codebases. Progress is committed periodically and the queue tracks status, so you can resume with `--continue` if interrupted.
+
+**Key files:**
+- `.specs/doc-queue.md` — Ordered list of items to document (automation parses this)
+- `.specs/codebase-summary.md` — Project overview + baseline status
+- `.specs/needs-review.md` — Items that couldn't be fully documented
+
 ---
 
 ## Pause Triggers
@@ -257,7 +290,7 @@ Then [expected result]
 ### Setup
 | Command | Purpose |
 |---------|---------|
-| `/spec-init` | Bootstrap on existing codebase |
+| `/spec-init` | Discover codebase structure, create doc-queue.md (discovery only) |
 | `/vision` | Create or update vision.md |
 | `/personas` | Create or update user personas |
 | `/design-tokens` | Create or update design tokens (personality-driven) |
@@ -268,10 +301,11 @@ Then [expected result]
 ### Core Workflow
 | Command | Purpose |
 |---------|---------|
-| `/document-code` | Generate specs from existing code |
+| `/document-code` | Generate specs from existing code (single or batch mode) |
 | `/prototype` | Rapid prototyping without specs |
 | `/formalize` | Convert prototype to production with specs |
 | `/compound` | Extract and persist learnings from session |
+| `/strip-specs` | Strip implementation details from specs for rebuilding in a new project |
 
 ### Roadmap Commands
 | Command | Purpose |
@@ -345,6 +379,7 @@ When working with specs, always tell the user:
 | Design tokens | `.specs/design-system/tokens.md` |
 | Component docs | `.specs/design-system/components/{name}.md` |
 | Mapping | `.specs/mapping.md` (auto-generated) |
+| Documentation queue | `.specs/doc-queue.md` (created by `/spec-init` or `doc-loop-local.sh`) |
 | Cross-cutting learnings | `.specs/learnings/` (by category) |
 
 ---

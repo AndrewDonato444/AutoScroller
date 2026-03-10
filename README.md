@@ -172,6 +172,90 @@ Or from an existing app:
  7:00 AM  You review 3-4 draft PRs (specs verified against code)
 ```
 
+### Document Existing Codebase
+
+For codebases built without specs, use the doc-loop to systematically document everything:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  /spec-init     │ ──▶ │ doc-loop-local  │ ──▶ │  Verification   │
+│ (discovery)     │     │ (fresh agent    │     │ (coverage       │
+│                 │     │  per domain)    │     │  report)        │
+│ Creates:        │     │                 │     │                 │
+│ - doc-queue.md  │     │ Processes:      │     │ Reports:        │
+│ - codebase-     │     │ - specs         │     │ - % documented  │
+│   summary.md    │     │ - tests         │     │ - gaps          │
+│                 │     │ - test docs     │     │ - issues found  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+     (in IDE)              (in terminal)           (in terminal)
+```
+
+**Philosophy: Document, don't fix.** Tests are written to pass against current code. Pre-existing failures are recorded as baseline, not fixed. Source code is never modified.
+
+```bash
+# Interactive: review queue before processing
+/spec-init                                # Creates doc-queue.md (in Cursor/Claude)
+# ... review .specs/doc-queue.md ...
+./scripts/doc-loop-local.sh --continue    # Process the queue
+
+# Headless: discovery + process in one go
+./scripts/doc-loop-local.sh
+
+# Scoped: only document one directory
+./scripts/doc-loop-local.sh --scope src/auth
+
+# Discovery only: just create the queue
+./scripts/doc-loop-local.sh --discovery-only
+
+# Resume after interruption
+./scripts/doc-loop-local.sh --continue
+```
+
+Each queue item gets a **fresh agent context**, so documentation quality stays consistent even for large codebases (unlike running everything in one agent session).
+
+### Rebuild: Seeded from Previous Project
+
+When you've iterated on a project and know what works, strip the behavioral specs and rebuild fresh with a better model or cleaner architecture:
+
+```
+Old Project                         New Project
+┌─────────────────────┐             ┌─────────────────────┐
+│ .specs/features/    │  strip-     │ .specs/features/    │
+│   158 specs with    │──specs.sh──▶│   34 stripped specs  │
+│   implementation    │             │   (behavior only)   │
+│   details           │             │                     │
+│ .specs/personas/    │────copy────▶│ .specs/personas/    │
+│ .specs/design-sys/  │────copy────▶│ .specs/design-sys/  │
+│ .specs/vision.md    │──copy+flag─▶│ .specs/vision.md    │
+└─────────────────────┘             └─────────────────────┘
+                                            │
+                                    edit vision + roadmap
+                                            │
+                                            ▼
+                                    ./scripts/build-loop-local.sh
+                                    (agent reads seeded specs in
+                                     update mode, makes own
+                                     architecture decisions)
+```
+
+```bash
+# 1. Strip specs from old project (exclude features you don't want)
+./scripts/strip-specs.sh \
+  --source ~/projects/old-app \
+  --target ~/projects/new-app \
+  --exclude "deal-pipeline,contact-manager,email-integration" \
+  --include-context
+
+# 2. Edit vision and roadmap for new scope
+cd ~/projects/new-app
+# (update .specs/vision.md, create .specs/roadmap.md)
+
+# 3. Build from seeded specs
+./scripts/build-loop-local.sh
+```
+
+Stripped specs keep Gherkin scenarios, ASCII mockups, and user journeys. File paths, test refs, component lists, architecture notes, and learnings are removed. The build agent reads the behavioral seed via `/spec-first` update mode and makes fresh architecture decisions.
+
 ### Build Validation Pipeline
 
 Every feature build goes through a multi-stage pipeline. Each agent-based step runs in a **fresh context window** — you can assign different AI models to each step.
@@ -223,7 +307,7 @@ Every feature build goes through a multi-stage pipeline. Each agent-based step r
 | `/vision` | Create or update vision.md from description, Jira, or Confluence |
 | `/personas` | Create user personas (vocabulary, patience, frustrations, anti-persona) |
 | `/design-tokens` | Create personality-driven design tokens (reads vision + personas) |
-| `/spec-init` | Bootstrap SDD on existing codebase |
+| `/spec-init` | Discover codebase structure, create doc-queue.md (discovery only) |
 
 ### Core Workflow
 
@@ -242,6 +326,12 @@ Every feature build goes through a multi-stage pipeline. Each agent-based step r
 | `/clone-app <url>` | Analyze app → create vision.md + roadmap.md |
 | `/build-next` | Build next pending feature from roadmap |
 | `/roadmap-triage` | Scan Slack/Jira → add to roadmap |
+
+### Rebuild & Seed
+
+| Command | Purpose |
+|---------|---------|
+| `/strip-specs` | Strip implementation details from specs for rebuilding in a new project |
 
 ### Maintenance
 
@@ -330,7 +420,8 @@ Unlike generic design token templates, `/design-tokens` derives a **tailored** s
 │   │   ├── api.md
 │   │   ├── design.md
 │   │   └── general.md
-│   └── mapping.md          # AUTO-GENERATED routing table
+│   ├── mapping.md          # AUTO-GENERATED routing table
+│   └── doc-queue.md        # Documentation queue (created by /spec-init or doc-loop)
 │
 ├── scripts/
 │   ├── build-loop-local.sh        # Run /build-next in a loop (no remote)
@@ -545,6 +636,8 @@ Categories: `testing.md`, `performance.md`, `security.md`, `api.md`, `design.md`
 | Script | Purpose |
 |--------|---------|
 | `./scripts/build-loop-local.sh` | Run /build-next in a loop locally (no remote/push/PR). Config: CLI_PROVIDER, BASE_BRANCH, BRANCH_STRATEGY, MAX_FEATURES |
+| `./scripts/doc-loop-local.sh` | Document existing codebase (discovery + fresh agent per domain). Config: CLI_PROVIDER, DOC_MODEL, DISCOVERY_MODEL |
+| `./scripts/strip-specs.sh` | Strip implementation details from specs for seeding a rebuild |
 | `./scripts/generate-mapping.sh` | Regenerate mapping.md from specs |
 | `./scripts/nightly-review.sh` | Extract learnings from today's commits |
 | `./scripts/overnight-autonomous.sh` | Full overnight automation (sync, triage, build, PRs) |
@@ -582,6 +675,37 @@ COMPOUND=false ./scripts/build-loop-local.sh
 
 # Claude Code with rate-limit handling (longer backoff for Opus)
 CLI_PROVIDER=claude RATE_LIMIT_BACKOFF=120 RATE_LIMIT_MAX_WAIT=18000 ./scripts/build-loop-local.sh
+```
+
+### Doc Loop Examples
+
+```bash
+# Default: Cursor CLI, document entire codebase
+./scripts/doc-loop-local.sh
+
+# Use Claude Code CLI
+CLI_PROVIDER=claude ./scripts/doc-loop-local.sh
+
+# Discovery only (review queue before processing)
+./scripts/doc-loop-local.sh --discovery-only
+
+# Resume from existing queue
+./scripts/doc-loop-local.sh --continue
+
+# Scope to one directory
+./scripts/doc-loop-local.sh --scope src/components
+
+# Use different models for discovery vs documentation
+DISCOVERY_MODEL="opus-4.6-thinking" DOC_MODEL="composer-1.5" ./scripts/doc-loop-local.sh
+
+# Skip test writing (specs only)
+DOC_WRITE_TESTS=false ./scripts/doc-loop-local.sh
+
+# Commit more frequently (every 3 items instead of 5)
+COMMIT_EVERY=3 ./scripts/doc-loop-local.sh
+
+# Just run verification on already-processed queue
+./scripts/doc-loop-local.sh --verify-only
 ```
 
 ## Requirements

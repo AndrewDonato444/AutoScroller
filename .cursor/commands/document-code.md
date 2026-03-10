@@ -15,6 +15,15 @@ CODE → SPEC → TEST
 - Quick iteration happened after initial implementation
 - Onboarding existing features into spec-driven workflow
 - After `/prototype` when you want to skip `/formalize` and just document
+- Called by `doc-loop-local.sh` in batch mode
+
+## Philosophy: Document, Don't Fix
+
+- **Be honest**: Document what the code does, even if it seems wrong
+- **Flag issues**: Note potential bugs as "Potential Issues", don't fix them
+- **No code changes**: Do NOT modify any source files. Only create `.specs/` and test files.
+- **Passing tests**: Tests must pass against CURRENT code. If they don't, re-read the code.
+- **One retry**: If tests fail, fix the TEST (not the source). If still failing, log as discovered issue.
 
 ## Behavior
 
@@ -33,10 +42,12 @@ CODE → SPEC → TEST
 - Write tests that **pass against current implementation**
 - Cover all identified behaviors
 - These are not aspirational—they document reality
+- **If tests fail**: Re-read the code and fix the test (you misread something)
+- **If still failing after one retry**: Log as "discovered behavior gap" in the spec, move on
 
 ### 4. Update Documentation
 - Create/update `.specs/test-suites/*.tests.md`
-- Update `.specs/mapping.md`
+- Update `.specs/mapping.md` (or run `./scripts/generate-mapping.sh`)
 - Add change log entries
 
 ## Key Difference from `/spec-first`
@@ -47,6 +58,30 @@ CODE → SPEC → TEST
 | Tests | Written to fail first | Written to pass |
 | Spec | Defines desired behavior | Documents actual behavior |
 | Use | New features | Existing code |
+
+## Modes
+
+### Single Component (default)
+```
+/document-code the DealCard component
+```
+Documents one component/module with full detail.
+
+### Batch Mode (used by doc-loop-local.sh)
+When given multiple related files (a domain group):
+```
+/document-code auth — src/lib/auth.ts, src/middleware.ts, src/hooks/useAuth.ts
+```
+1. Read ALL listed files together for cross-file context
+2. Create one or more specs depending on how behaviors group
+3. Write tests covering all files
+4. More efficient than documenting each file separately
+
+### Recent Changes
+```
+/document-code the changes I just made
+```
+Look at recent edits, document new/changed behavior, update existing specs.
 
 ## Output Format
 
@@ -76,6 +111,12 @@ CODE → SPEC → TEST
 - Returns `undefined` instead of `null` for missing users
 - No error handling for network failures
 
+### Discovered Behavior Gaps
+
+🔍 These couldn't be fully tested (logged for review):
+- Concurrent session handling requires Redis (can't test locally)
+- Race condition in debounced search — needs integration test
+
 ### Suggested Follow-ups
 
 - [ ] Verify edge case X is intentional
@@ -87,53 +128,25 @@ CODE → SPEC → TEST
 **Tests written and passing. Documentation complete.**
 ```
 
-## Prompts for Clarification
+## Output Signals (for automation)
 
-When documenting code, I may ask:
+When called by `doc-loop-local.sh`, output these signals at the end:
 
-1. "This component does X—is that intentional or a bug?"
-2. "I see no error handling for Y. Should I document current behavior or add handling?"
-3. "This code has multiple modes. Want me to document all, or focus on primary use?"
+```
+DOC_COMPLETE: {item number}
+SPEC_FILES: {comma-separated spec paths}
+TEST_FILES: {comma-separated test paths}
+```
 
-## Example Usage
+Or if partially documented:
+```
+DOC_PARTIAL: {item number} — {reason}
+```
 
-### Single Component
+Or if failed:
 ```
-/document-code the DealCard component
+DOC_FAILED: {item number} — {reason}
 ```
-I will:
-1. Read `components/deal-card.tsx`
-2. Analyze props, state, renders, handlers
-3. Create `.specs/features/deals/deal-card.feature.md`
-4. Write tests covering all behaviors
-5. Create `.specs/test-suites/components/DealCard.tests.md`
-6. Update `mapping.md`
-
-### Utility Module
-```
-/document-code lib/formatters
-```
-I will:
-1. Read all exports from the module
-2. Document each function's behavior
-3. Write unit tests for each
-4. Note any edge cases handled
-
-### Recent Changes
-```
-/document-code the changes I just made
-```
-I will:
-1. Look at recent edits in the session
-2. Document the new/changed behavior
-3. Update existing specs if modifying documented code
-4. Write tests for new functionality
-
-### After Prototyping
-```
-/document-code the prototype chart component
-```
-Lighter version of `/formalize`—documents without refactoring to production standards.
 
 ## Important Notes
 
@@ -141,5 +154,5 @@ Lighter version of `/formalize`—documents without refactoring to production st
 2. **Tests should pass** - Unlike `/spec-first`, tests are written to pass immediately
 3. **Be honest in specs** - Document what code does, even if it seems wrong
 4. **Flag issues** - Note potential bugs or unintentional behaviors for review
-5. **Maintain mapping** - Always update `mapping.md` with new relationships
-
+5. **Don't fix code** - Source files are read-only. Only create documentation and test files.
+6. **One retry max** - If tests fail after re-reading the code, log and move on

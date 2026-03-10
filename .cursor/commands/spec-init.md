@@ -1,24 +1,22 @@
-# Spec-Init: Bootstrap Spec-Driven Workflow
+# Spec-Init: Discover and Queue Codebase for Documentation
 
-Initialize the spec-driven development workflow on an existing codebase. This command scans the entire codebase and generates specs, tests, and documentation until 100% coverage is achieved.
+Scan an existing codebase, understand its structure, and create a documentation queue. This command performs **discovery only** — it does not write specs or tests.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                           PHASE 1: DISCOVERY                             │
-│  Build complete inventory of codebase. Understand what needs to be done. │
+│  Build complete inventory of codebase. Group files by domain.            │
 └──────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                         PHASE 2: PROCESSING LOOP                         │
-│   Pick uncovered file → Generate spec → Write tests → Document → Repeat  │
+│                        PHASE 2: OUTPUT QUEUE                             │
+│   Write .specs/doc-queue.md + .specs/codebase-summary.md                 │
 └──────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          PHASE 3: VERIFICATION                           │
-│   Run all tests. Compare actual vs documented. Confirm 100% coverage.    │
-└──────────────────────────────────────────────────────────────────────────┘
+         "Queue ready. Run ./scripts/doc-loop-local.sh --continue
+          to process, or /document-code {feature} one at a time."
 ```
 
 ## When to Use
@@ -26,29 +24,25 @@ Initialize the spec-driven development workflow on an existing codebase. This co
 - First time adopting spec-driven workflow on existing project
 - Onboarding legacy codebase into documentation
 - After `git auto` or `git sdd` on an existing project
+- Before running `doc-loop-local.sh` to review what will be documented
 
 ## Behavior
 
-### Autonomous Execution
+### Discovery (Autonomous)
 
-This command runs **autonomously**. No stopping. No questions. Loop until done.
+This command runs autonomously. No stopping. No questions.
 
 | Situation | Automatic Behavior |
 |-----------|-------------------|
 | **Monorepo** | Process all packages. Each gets its own domain grouping. |
-| **Existing `.specs/`** | Merge mode—add new, preserve existing. Never delete. |
-| **Large codebase (100+)** | Process everything. No shortcuts. |
-| **Test fails after 3 attempts** | Log to `needs-review.md`, continue to next file. |
-| **Complex file can't be analyzed** | Create minimal spec, flag for review, continue. |
-| **Mixed naming conventions** | Detect per-directory, adapt accordingly. |
+| **Existing `.specs/`** | Merge mode — check existing coverage, only queue uncovered files. |
+| **Large codebase (100+)** | Scan everything. Group aggressively (max 5 files per item). |
 | **No clear domains** | Use directory path as domain. |
 | **Source file with no exports** | Skip (config/entry). Log in discovery. |
 
 ---
 
-## Phase 1: Discovery
-
-### 1.1 Environment Detection
+## Step 1: Environment Detection
 
 Automatically detect:
 - **Language/Framework**: TypeScript, Python, Go, React, Next.js, Django, etc.
@@ -57,7 +51,7 @@ Automatically detect:
 - **Source Directories**: `src/`, `app/`, `lib/`, `components/`
 - **Existing Design System**: Look for CSS variables, Tailwind config, theme files
 
-### 1.2 Build Work Queue
+## Step 2: Scan and Categorize
 
 Scan codebase and categorize every source file:
 
@@ -69,26 +63,33 @@ Scan codebase and categorize every source file:
 | Hooks | Test files themselves |
 | Models/schemas | Generated files, `node_modules`, `dist` |
 
-### 1.3 Check Existing Coverage
+## Step 3: Check Existing Coverage
 
 For each source file, check:
 - [ ] Feature spec exists (`.specs/features/{domain}/{name}.feature.md`)
 - [ ] Test file exists
-- [ ] Tests pass
 - [ ] Test doc exists (`.specs/test-suites/{path}/{Name}.tests.md`)
 - [ ] Mapping entry exists
 
-### 1.4 Detect/Create Design System
+## Step 4: Group by Domain
 
-Check for existing design system:
-- CSS custom properties in stylesheets
-- Tailwind config with custom theme
-- Theme files (colors, tokens, etc.)
+Group related files into documentation items:
+- A component + its hook → one item
+- An API route + its service → one item
+- A set of utility functions → one item
+- Max 5 files per group (split if more)
 
-If found: Create `.specs/design-system/tokens.md` documenting existing tokens
-If not found: Create default tokens file
+Order: infrastructure/utils first → features → pages/views last.
 
-### 1.5 Create Codebase Summary
+## Step 5: Run Baseline (Read-Only)
+
+Run the existing test suite and build check as **read-only reporting**. Do NOT fix anything.
+
+Record:
+- Test suite: X passing, Y failing (pre-existing)
+- Build status: clean or N errors (pre-existing)
+
+## Step 6: Create Codebase Summary
 
 Create `.specs/codebase-summary.md`:
 
@@ -98,27 +99,70 @@ Create `.specs/codebase-summary.md`:
 ## Project Overview
 [Auto-generated description]
 
+## Environment
+- Language: [detected]
+- Framework: [detected]
+- Test Runner: [detected]
+
 ## Directory Structure
 [Key directories and purposes]
 
-## Components Catalog
-| Component | Location | Purpose | Has Tests |
-|-----------|----------|---------|-----------|
+## Baseline Status
+- Test suite: X passing, Y failing (pre-existing)
+- Build: clean | N errors (pre-existing)
 
-## Test Coverage Analysis
+## Coverage Analysis
 **Total Files in Scope**: X
-**Files with Tests**: Y
-**Starting Coverage**: Z%
-
-## Design System Status
-[Detected/Created with token summary]
+**Already Documented**: Y
+**Items Queued**: Z
 ```
 
-### 1.6 Discovery Output
+## Step 7: Create Documentation Queue
+
+Create `.specs/doc-queue.md` with this **exact format** (parsed by automation):
+
+```markdown
+# Documentation Queue
+
+Generated: YYYY-MM-DD
+Environment: {language} + {framework}, {test runner}
+Scope: full codebase
+Total files: {X}
+Already documented: {Y}
+Items to document: {Z}
+
+## Baseline
+
+Test suite: {X passing, Y failing} (pre-existing, not our problem)
+Build status: {clean | N errors} (pre-existing)
+
+## Queue
+
+| # | Domain | Files | Type | Status |
+|---|--------|-------|------|--------|
+| 1 | auth | src/lib/auth.ts, src/middleware.ts | service | ⬜ |
+| 2 | deals | src/components/DealCard.tsx | component | ⬜ |
+```
+
+## Step 8: Detect/Create Design System
+
+Check for existing design system:
+- CSS custom properties in stylesheets
+- Tailwind config with custom theme
+- Theme files (colors, tokens, etc.)
+
+If found: Create `.specs/design-system/tokens.md` documenting existing tokens.
+If not found: Create default tokens file.
+
+---
+
+## After Discovery
+
+Print the summary and tell the user:
 
 ```
 ═══════════════════════════════════════════════════════════════════
-                        PHASE 1: DISCOVERY COMPLETE
+                    DISCOVERY COMPLETE
 ═══════════════════════════════════════════════════════════════════
 
 Environment
@@ -127,162 +171,30 @@ Environment
 ├── Test Runner: Jest
 └── Test Command: npm test
 
-Work Queue
-├── ✅ Fully covered: 23 files
-├── 🟡 Partially covered: 12 files (have test but missing spec)
-├── 🔴 No coverage: 30 files
-└── Total in scope: 65 files
+Baseline
+├── Tests: 142 passing, 6 failing (pre-existing)
+└── Build: clean
 
-Starting Coverage: 35% (23/65)
+Documentation Queue
+├── Items to document: 42
+├── Already documented: 23
+└── Queue written to: .specs/doc-queue.md
 
-Design System: Created default tokens
-└── .specs/design-system/tokens.md
-
-Ready to begin processing loop...
-```
-
----
-
-## Phase 2: Processing Loop
-
-For each uncovered file in the queue:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ PROCESSING: components/user-card.tsx (15/65)                    │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Step 1: Read & Understand                                      │
-│  └─▶ Read source file, understand exports, props, behavior      │
-│                                                                 │
-│  Step 2: Generate Feature Spec                                  │
-│  └─▶ Create .specs/features/{domain}/{file}.feature.md          │
-│  └─▶ Gherkin scenarios for all behaviors                        │
-│  └─▶ ASCII mockup (if UI component)                             │
-│                                                                 │
-│  Step 3: Write Tests (PASSING)                                  │
-│  └─▶ Create test file if missing                                │
-│  └─▶ Write tests that PASS against current implementation       │
-│  └─▶ Cover all scenarios from feature spec                      │
-│                                                                 │
-│  Step 4: Run Tests                                              │
-│  └─▶ Execute test file                                          │
-│  └─▶ Verify all tests pass                                      │
-│  └─▶ If fail: fix tests, re-run (max 3 attempts)                │
-│  └─▶ If still fail: log to needs-review.md, continue            │
-│                                                                 │
-│  Step 5: Document Test Suite                                    │
-│  └─▶ Create .specs/test-suites/{path}/{Name}.tests.md           │
-│  └─▶ Parse test file for describe blocks and test names         │
-│  └─▶ Assign test IDs                                            │
-│                                                                 │
-│  Step 6: Mapping (Auto-Generated)                               │
-│  └─▶ YAML frontmatter triggers auto-regeneration                │
-│                                                                 │
-│  Step 7: Create Component Stubs (if UI)                         │
-│  └─▶ If component, create stub in design-system/components/     │
-│                                                                 │
-├─────────────────────────────────────────────────────────────────┤
-│ ✅ COMPLETE: components/user-card.tsx                           │
-│ Progress: 16/65 (25%) ████████░░░░░░░░░░░░░░░░░░░░░░░░         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Progress Tracking
-
-After each file:
-
-```markdown
-## Progress Update
-
-| Metric | Value |
-|--------|-------|
-| Files processed | 16/65 |
-| Coverage | 25% → 26% |
-| Tests written | 142 |
-| Tests passing | 142 ✅ |
-
-### Just Completed
-- `components/user-card.tsx`
-  - Feature spec: `.specs/features/users/user-card.feature.md`
-  - Test file: `tests/components/UserCard.test.tsx` (9 tests)
-  - Test doc: `.specs/test-suites/components/UserCard.tests.md`
-
-### Up Next
-- `components/user-profile.tsx`
-```
-
----
-
-## Phase 3: Verification
-
-### 3.1 Run Full Test Suite
-
-```bash
-npm test  # or pytest, go test, etc.
-```
-
-### 3.2 Verify Coverage Matrix
-
-| Source File | Spec | Test File | Tests Pass | Test Doc | Mapping | Status |
-|-------------|------|-----------|------------|----------|---------|--------|
-| `components/user-card.tsx` | ✅ | ✅ | ✅ (9/9) | ✅ | ✅ | ✅ |
-
-### 3.3 Reconcile Test Counts
-
-Compare documented test counts vs actual test runner output.
-
-### 3.4 Final Output
-
-```
+Next steps:
+├── Review the queue: .specs/doc-queue.md
+├── Process automatically: ./scripts/doc-loop-local.sh --continue
+└── Process one at a time: /document-code {feature}
 ═══════════════════════════════════════════════════════════════════
-                    FINAL COVERAGE: 97%
-═══════════════════════════════════════════════════════════════════
-
-Files in scope:        65
-Fully covered:         63  ████████████████████████████████░░
-Needs attention:        2
-
-Feature specs:         65/65 (100%) ✅
-Test files:            65/65 (100%) ✅
-Tests passing:        285/287 (99%) ⚠️
-Test documentation:    65/65 (100%) ✅
-Mapping entries:       65/65 (100%) ✅
-
-Design System
-├── Tokens: ✅ Created
-└── Component stubs: 12 created (pending documentation)
-
-Files needing review: .specs/needs-review.md
-
-Total time: 19m 39s
 ```
-
----
-
-## Key Differences from `/spec-first`
-
-| Aspect | `/spec-init` | `/spec-first` |
-|--------|--------------|---------------|
-| When | Existing codebase | New features |
-| Tests | Written to PASS | Written to FAIL first |
-| Spec | Documents actual behavior | Defines desired behavior |
-| Design System | Detects or creates | References or creates |
-| Scope | Entire codebase | Single feature |
-| Interaction | Autonomous loop | Pause for approval |
 
 ---
 
 ## Scoped Runs
 
-The command can be invoked with different scopes:
-
 | Mode | Behavior |
 |------|----------|
-| `/spec-init` (default) | Full repo scan, process everything |
-| `/spec-init components/` | Only process the specified directory |
-| `/spec-init --continue` | Only process uncovered files (resume) |
-| `/spec-init --untested` | Skip files that already have tests |
+| `/spec-init` (default) | Full repo scan |
+| `/spec-init components/` | Only scan the specified directory |
 
 ---
 
@@ -290,84 +202,33 @@ The command can be invoked with different scopes:
 
 | File | Purpose |
 |------|---------|
-| `.specs/codebase-summary.md` | Overview of entire codebase |
-| `.specs/features/**/*.feature.md` | Feature specs for each file |
-| `.specs/test-suites/**/*.tests.md` | Test documentation |
+| `.specs/codebase-summary.md` | Overview of entire codebase + baseline status |
+| `.specs/doc-queue.md` | Ordered list of items to document (parsed by doc-loop-local.sh) |
 | `.specs/design-system/tokens.md` | Design tokens (if not exists) |
-| `.specs/design-system/components/*.md` | Component stubs |
-| `.specs/mapping.md` | Links everything together |
-| `.specs/needs-review.md` | Files that couldn't be fully covered |
 
 ---
 
-## Example Session
+## What This Does NOT Do
+
+- Does NOT write specs or tests (that's `/document-code` or `doc-loop-local.sh`)
+- Does NOT fix failing tests (that's pre-existing tech debt)
+- Does NOT modify source code
+- Does NOT run the full processing loop (old behavior — use `doc-loop-local.sh` instead)
+
+---
+
+## Integration with doc-loop-local.sh
+
+This command creates the queue. The script processes it:
 
 ```
-User: /spec-init
+/spec-init                              # Creates doc-queue.md (in IDE)
+  ↓ (review queue)
+./scripts/doc-loop-local.sh --continue  # Processes queue (in terminal)
+```
 
-═══════════════════════════════════════════════════════════════════
-                        PHASE 1: DISCOVERY
-═══════════════════════════════════════════════════════════════════
+Or skip the review step:
 
-[Detecting environment...]
-✓ TypeScript + Next.js 14 detected
-✓ Jest test runner (jest.config.js)
-✓ Test command: npm test
-
-[Scanning for design system...]
-✓ Found Tailwind config with custom colors
-✓ Created .specs/design-system/tokens.md from existing theme
-
-[Building work queue...]
-✓ 65 source files in scope
-✓ 23 already have tests (35% starting coverage)
-✓ 42 need tests written
-
-Work queue ready. Starting processing loop...
-
-═══════════════════════════════════════════════════════════════════
-                     PHASE 2: PROCESSING LOOP
-═══════════════════════════════════════════════════════════════════
-
-[1/65] components/button.tsx
-  ✓ Feature spec created
-  ✓ Tests exist, verified passing (5/5)
-  ✓ Test doc created
-  ✓ Component stub created
-  ✓ Mapping updated
-  Progress: 2% ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-
-[2/65] components/user-card.tsx
-  ✓ Feature spec created
-  ✓ Tests written (9 tests)
-  ✓ Tests passing (9/9)
-  ✓ Test doc created
-  ✓ Component stub created
-  ✓ Mapping updated
-  Progress: 3% ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-
-... (continues autonomously) ...
-
-═══════════════════════════════════════════════════════════════════
-                      PHASE 3: VERIFICATION
-═══════════════════════════════════════════════════════════════════
-
-[Running full test suite...]
-✓ npm test completed
-✓ 285 tests run, 283 passing, 2 failing
-
-[Verifying coverage matrix...]
-✓ 65/65 have feature specs
-✓ 65/65 have test files
-✓ 63/65 have all tests passing
-✓ 65/65 have test documentation
-✓ 65/65 in mapping.md
-
-═══════════════════════════════════════════════════════════════════
-                    FINAL COVERAGE: 97%
-═══════════════════════════════════════════════════════════════════
-
-2 files need manual review. See .specs/needs-review.md
-
-Total time: 19m 39s
+```
+./scripts/doc-loop-local.sh             # Does its own discovery + processes
 ```
