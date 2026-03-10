@@ -169,9 +169,9 @@ run_agent() {
 
         if [ "$CLI_PROVIDER" = "claude" ]; then
             if [ -n "$model" ]; then
-                claude -p "$prompt" --output-format text --allowedTools Read,Edit,Bash,Grep,Glob --model "$model" 2>&1 | tee "$agent_output" || exit_code=$?
+                claude -p "$prompt" --output-format text --dangerously-skip-permissions --model "$model" 2>&1 | tee "$agent_output" || exit_code=$?
             else
-                claude -p "$prompt" --output-format text --allowedTools Read,Edit,Bash,Grep,Glob 2>&1 | tee "$agent_output" || exit_code=$?
+                claude -p "$prompt" --output-format text --dangerously-skip-permissions 2>&1 | tee "$agent_output" || exit_code=$?
             fi
         else
             if [ -n "$model" ]; then
