@@ -333,6 +333,8 @@ clean_working_tree() {
 
 LAST_BUILD_OUTPUT=""
 LAST_TEST_OUTPUT=""
+FEATURE_SESSION_NOTES=""
+LAST_DRIFT_SUMMARY=""
 
 check_build() {
     if [ -z "$BUILD_CMD" ]; then
@@ -378,6 +380,17 @@ check_tests() {
 
 should_run_step() {
     echo ",$POST_BUILD_STEPS," | grep -q ",$1,"
+}
+
+# Extract session summary from agent output (between SESSION_SUMMARY_START/END markers)
+extract_session_summary() {
+    local output="$1"
+    local phase="$2"
+    local summary
+    summary=$(echo "$output" | sed -n '/SESSION_SUMMARY_START/,/SESSION_SUMMARY_END/p' | sed '1d;$d')
+    if [ -n "$summary" ]; then
+        printf "\n### %s\n%s\n" "$phase" "$summary"
+    fi
 }
 
 # ── Drift check helpers ──────────────────────────────────────────────────
@@ -459,6 +472,13 @@ Instructions:
 
 IMPORTANT: Your goal is spec+code alignment AND a passing test suite. Keep iterating until both are achieved.
 
+Before outputting your final signal, write a session summary between these exact markers:
+SESSION_SUMMARY_START
+- Drift found: [what mismatches were detected between spec and code]
+- Fixed: [how mismatches were reconciled]
+- Root cause: [why the drift likely occurred]
+SESSION_SUMMARY_END
+
 Output EXACTLY ONE of these signals at the end:
 NO_DRIFT
 DRIFT_FIXED: {brief summary of what was reconciled}
@@ -467,6 +487,9 @@ DRIFT_UNRESOLVABLE: {what needs human attention and why}
         run_agent "$DRIFT_MODEL" "$drift_prompt" 2>&1 | tee "$DRIFT_OUTPUT" || true
         DRIFT_RESULT=$(cat "$DRIFT_OUTPUT")
         rm -f "$DRIFT_OUTPUT"
+
+        # Capture session summary for compound phase (global variable)
+        LAST_DRIFT_SUMMARY=$(extract_session_summary "$DRIFT_RESULT" "Drift Check Phase")
 
         if echo "$DRIFT_RESULT" | grep -q "NO_DRIFT"; then
             success "Drift check passed — spec and code are aligned"
@@ -687,6 +710,15 @@ CRITICAL IMPLEMENTATION RULES (from roadmap):
 - Features must work end-to-end with real user data or they are not done.
 - Real validation, real error handling, real flows.
 
+Before outputting your final signals, write a session summary between these exact markers:
+SESSION_SUMMARY_START
+- Decisions: [key architectural or design decisions you made and why]
+- Errors hit: [build/type/test errors encountered and how you resolved them]
+- Patterns: [notable code patterns used or discovered]
+- Gotchas: [unexpected issues, edge cases, or workarounds needed]
+- Testing: [testing approach, what was tricky to test, mock strategies used]
+SESSION_SUMMARY_END
+
 After completion, output EXACTLY these signals (each on its own line):
 FEATURE_BUILT: $feature_name
 SPEC_FILE: $spec_file
@@ -733,6 +765,15 @@ $LAST_TEST_OUTPUT
     fi
 
     prompt="$prompt
+Before outputting your final signals, write a session summary between these exact markers:
+SESSION_SUMMARY_START
+- Decisions: [key architectural or design decisions you made and why]
+- Errors hit: [build/type/test errors encountered and how you resolved them]
+- Patterns: [notable code patterns used or discovered]
+- Gotchas: [unexpected issues, edge cases, or workarounds needed]
+- Testing: [testing approach, what was tricky to test, mock strategies used]
+SESSION_SUMMARY_END
+
 After completion, output EXACTLY these signals (each on its own line):
 FEATURE_BUILT: {feature name}
 SPEC_FILE: {path to the .feature.md file}
@@ -778,6 +819,13 @@ Instructions:
 7. Do NOT update the roadmap or feature spec (behavior didn't change)
 8. Commit: refactor: clean up $feature_name
 
+Before outputting your final signal, write a session summary between these exact markers:
+SESSION_SUMMARY_START
+- Refactored: [what was changed and why]
+- Skipped: [what looked refactorable but was left alone, and why]
+- Patterns: [refactoring patterns applied]
+SESSION_SUMMARY_END
+
 After completion, output EXACTLY ONE of:
 REFACTOR_COMPLETE: {brief summary of changes made}
 REFACTOR_SKIPPED: code already clean
@@ -785,25 +833,45 @@ REFACTOR_SKIPPED: code already clean
 }
 
 # Phase 5: Compound (COMPOUND_MODEL). Called after drift check.
+# Args: $1=feature_name, $2=spec_file, $3=source_files, $4=session_notes (optional)
 compound_prompt() {
     local feature_name="$1"
     local spec_file="$2"
     local source_files="$3"
+    local session_notes="$4"
+
+    local notes_section=""
+    if [ -n "$session_notes" ]; then
+        notes_section="
+## Session Notes (from prior build phases)
+
+These notes were captured from the build, refactor, and drift-check agents that ran before you.
+They describe the journey — errors hit, decisions made, patterns discovered:
+$session_notes
+---"
+    fi
+
     echo "
 You are the COMPOUND agent. The feature \"$feature_name\" has been built, refactored, and drift-checked.
 Your job: extract learnings from this implementation session.
 
 Spec file: $spec_file
 Source files: $source_files
+$notes_section
 
 Instructions:
-1. Read the spec file and source files
-2. Identify learnings:
+1. Read the spec file and source files listed above
+2. Run \`git log --oneline -15\` to see the commit history for this feature
+3. Run \`git diff HEAD~5 --stat\` to see all files changed (including test files)
+4. Read the session notes above — errors and gotchas are the most valuable learnings
+5. Read existing .specs/learnings/index.md to avoid duplicating known patterns
+6. Identify learnings:
    - Feature-specific patterns → add to the spec file's ## Learnings section
    - Cross-cutting patterns → add to .specs/learnings/{category}.md (testing, performance, security, api, design, general)
    - Add a brief entry to .specs/learnings/index.md
-3. Update the spec's frontmatter: set updated: $(date '+%Y-%m-%d')
-4. Commit: compound: learnings from $feature_name
+7. Prioritize: errors hit > gotchas > decisions > patterns (hard-won knowledge is most valuable)
+8. Update the spec's frontmatter: set updated: $(date '+%Y-%m-%d')
+9. Commit: compound: learnings from $feature_name
 
 After completion, output:
 COMPOUND_COMPLETE: {brief summary of learnings captured}
@@ -877,7 +945,9 @@ run_build_loop() {
                 ;;
         esac
 
-        # ── Pre-flight: ensure working tree is clean ──
+        # ── Pre-flight: reset session notes and ensure working tree is clean ──
+        FEATURE_SESSION_NOTES=""
+        LAST_DRIFT_SUMMARY=""
         clean_working_tree
 
         # ── Build attempt ──
@@ -963,6 +1033,13 @@ run_build_loop() {
                 if [ "$phase_ok" = true ]; then
                     extract_drift_targets "$BUILD_RESULT"
 
+                    # Capture build phase session summary
+                    local build_summary
+                    build_summary=$(extract_session_summary "$BUILD_RESULT" "Build Phase")
+                    if [ -n "$build_summary" ]; then
+                        FEATURE_SESSION_NOTES="${FEATURE_SESSION_NOTES}${build_summary}"
+                    fi
+
                     # ── Phase 3: Refactor (REFACTOR_MODEL) ──
                     if [ "$REFACTOR" = "true" ]; then
                         log "Phase 3: Refactor (model: ${REFACTOR_MODEL:-${AGENT_MODEL:-default}}) — $feature_name"
@@ -971,6 +1048,8 @@ run_build_loop() {
 
                         REFACTOR_OUTPUT=$(mktemp)
                         run_agent "$REFACTOR_MODEL" "$(refactor_prompt "$feature_name" "$DRIFT_SPEC_FILE" "$DRIFT_SOURCE_FILES")" 2>&1 | tee "$REFACTOR_OUTPUT" || true
+                        local REFACTOR_RESULT
+                        REFACTOR_RESULT=$(cat "$REFACTOR_OUTPUT")
                         rm -f "$REFACTOR_OUTPUT"
 
                         # Verify refactor didn't break anything
@@ -980,6 +1059,12 @@ run_build_loop() {
                             success "Reverted to pre-refactor commit"
                         else
                             success "Refactor complete — build and tests still pass"
+                            # Capture refactor session summary (only if not reverted)
+                            local refactor_summary
+                            refactor_summary=$(extract_session_summary "$REFACTOR_RESULT" "Refactor Phase")
+                            if [ -n "$refactor_summary" ]; then
+                                FEATURE_SESSION_NOTES="${FEATURE_SESSION_NOTES}${refactor_summary}"
+                            fi
                         fi
                     else
                         log "Refactor disabled (set REFACTOR=true to enable)"
@@ -988,11 +1073,16 @@ run_build_loop() {
                     # ── Phase 4: Drift check (DRIFT_MODEL — fresh agent) ──
                     if check_drift "$DRIFT_SPEC_FILE" "$DRIFT_SOURCE_FILES"; then
 
+                        # Capture drift session summary (set by check_drift via global)
+                        if [ -n "$LAST_DRIFT_SUMMARY" ]; then
+                            FEATURE_SESSION_NOTES="${FEATURE_SESSION_NOTES}${LAST_DRIFT_SUMMARY}"
+                        fi
+
                         # ── Phase 5: Compound (COMPOUND_MODEL) ──
                         if [ "$COMPOUND" = "true" ]; then
                             log "Phase 5: Compound (model: ${COMPOUND_MODEL:-${AGENT_MODEL:-default}}) — $feature_name"
                             COMPOUND_OUTPUT=$(mktemp)
-                            run_agent "$COMPOUND_MODEL" "$(compound_prompt "$feature_name" "$DRIFT_SPEC_FILE" "$DRIFT_SOURCE_FILES")" 2>&1 | tee "$COMPOUND_OUTPUT" || true
+                            run_agent "$COMPOUND_MODEL" "$(compound_prompt "$feature_name" "$DRIFT_SPEC_FILE" "$DRIFT_SOURCE_FILES" "$FEATURE_SESSION_NOTES")" 2>&1 | tee "$COMPOUND_OUTPUT" || true
                             rm -f "$COMPOUND_OUTPUT"
                             success "Compound (learnings) complete"
                         else
