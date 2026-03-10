@@ -43,25 +43,27 @@ cp -r auto-sdd/.cursor auto-sdd/.claude auto-sdd/.specs auto-sdd/scripts auto-sd
 rm -rf auto-sdd
 ```
 
-### Migrating from SDD 1.0
+### Upgrading an Existing SDD Project
 
-If you have an existing project using SDD 1.0 (`git sdd`), **do NOT run `git auto`** - it would overwrite your files.
+If you have an existing SDD project (any version), **do NOT run `git auto`** — it would overwrite your files.
 
-Instead, use the two-step migration process:
+Instead, use the two-step upgrade process:
 
 ```bash
-# Step 1: Stage the 2.0 files (creates .sdd-upgrade/ directory)
+# Step 1: Stage the latest files (creates .sdd-upgrade/ directory)
 git auto-upgrade
 
-# Step 2: Run the migration (in Cursor or Claude Code)
+# Step 2: Run the upgrade (in Cursor or Claude Code)
 /sdd-migrate
 ```
+
+This works for any version → latest (1.0→2.1, 2.0→2.1, etc.). Custom commands and rules are preserved; only stock SDD files are updated. See `CHANGELOG.md` for what's new in each version.
 
 **Git alias for `auto-upgrade`** (add to `~/.gitconfig`):
 
 ```ini
 [alias]
-    auto-upgrade = "!f() { git clone --depth 1 https://github.com/AdrianRogowski/auto-sdd.git .sdd-temp && rm -rf .sdd-temp/.git && mkdir -p .sdd-upgrade && cp -r .sdd-temp/. .sdd-upgrade/ && rm -rf .sdd-temp && echo 'SDD 2.0.0 files staged in .sdd-upgrade/' && echo 'Now run /sdd-migrate to upgrade'; }; f"
+    auto-upgrade = "!f() { git clone --depth 1 https://github.com/AdrianRogowski/auto-sdd.git .sdd-temp && rm -rf .sdd-temp/.git && mkdir -p .sdd-upgrade && cp -r .sdd-temp/. .sdd-upgrade/ && rm -rf .sdd-temp && echo \"SDD $(cat .sdd-upgrade/VERSION 2>/dev/null || echo latest) files staged in .sdd-upgrade/\" && echo 'Now run /sdd-migrate to upgrade'; }; f"
 ```
 
 ### Post-Install (Optional: Overnight Automation)

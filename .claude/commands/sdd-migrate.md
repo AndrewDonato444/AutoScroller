@@ -1,47 +1,42 @@
 ---
-description: Migrate from SDD 1.0 to SDD 2.0 (preserves custom commands)
+description: Upgrade SDD to latest version (preserves custom commands/rules)
 ---
 
-Upgrade this project from SDD 1.0 to SDD 2.0.
+Upgrade this project's SDD installation to the latest version.
 
-**Prerequisites**: Run `git auto-upgrade` first to stage 2.0 files in `.sdd-upgrade/`.
+**Prerequisites**: Run `git auto-upgrade` first to stage latest files in `.sdd-upgrade/`.
 
 ## Prerequisite Checks
 
 1. Check `.sdd-upgrade/` exists → if missing, error: "Run 'git auto-upgrade' first"
 2. Check `.specs/` exists → if missing, error: "Not an SDD project, use 'git auto'"
-3. Check `.specs/.sdd-version` or `VERSION` → if "2.0", "2.0.0", or starts with "2.", already migrated
+3. Read CURRENT version from `VERSION` or `.specs/.sdd-version` (default "1.0.0")
+4. Read TARGET version from `.sdd-upgrade/VERSION` (default "2.1.0")
+5. If TARGET <= CURRENT → "Already on latest version. No upgrade needed."
 
-## Stock Commands (safe to replace)
+## Stock vs Custom Detection
 
-```
-catch-drift, check-coverage, code-review, design-component,
-design-tokens, document-code, fix-bug, formalize, prototype,
-refactor, spec-first, spec-init, start-feature, update-test-docs,
-verify-test-counts
-```
+**Do NOT use hardcoded command lists.** Instead:
+- Everything in `.sdd-upgrade/.cursor/commands/` = stock (sync these)
+- Everything in `.sdd-upgrade/.cursor/rules/` = stock (sync these)
+- Files in project's commands/rules NOT in staging = custom (preserve these)
 
-**New SDD 2.0 commands to add** (if missing): vision, roadmap, roadmap-triage, clone-app, build-next, compound, sdd-migrate
+## Upgrade Steps
 
-Any other commands are CUSTOM → preserve them.
-
-## Migration Steps
-
-1. **Inventory**: List commands/rules, identify stock vs custom
-2. **Learnings**: `cp -r .sdd-upgrade/.specs/learnings .specs/learnings`
-3. **Frontmatter**: Add YAML frontmatter to specs that don't have it (don't change content)
-4. **Commands**: Copy stock commands from `.sdd-upgrade/.cursor/commands/`; add vision, roadmap, roadmap-triage, clone-app, build-next if missing
-5. **Rules**: Copy stock rules from `.sdd-upgrade/.cursor/rules/`, add compound.mdc
-6. **Hooks**: Copy `.sdd-upgrade/.cursor/hooks.json` and hooks/ if not exist
-7. **Scripts**: `cp -r .sdd-upgrade/scripts .`
-8. **Mapping**: Backup mapping.md, run `./scripts/generate-mapping.sh`
+1. **Inventory**: List commands/rules, classify as stock (in staging) or custom (not in staging)
+2. **Directories**: Create `.specs/learnings/`, `.specs/design-system/components/`, `.specs/personas/`, `logs/` if missing
+3. **Learnings**: Copy learnings templates with no-clobber (`cp -n`) — don't overwrite existing content
+4. **Frontmatter**: Add YAML frontmatter to specs that don't have it (don't change content)
+5. **Commands**: Copy ALL `.md` files from `.sdd-upgrade/.cursor/commands/` → `.cursor/commands/`. Same for `.claude/commands/` if staging has them.
+6. **Rules**: Copy ALL `.mdc` files from `.sdd-upgrade/.cursor/rules/` → `.cursor/rules/`
+7. **Hooks**: Copy `.cursor/hooks.json` and `hooks/` from staging
+8. **Scripts**: `cp -r .sdd-upgrade/scripts .` + `chmod +x scripts/*.sh`
 9. **CLAUDE.md**: Copy from staging
-10. **Version**: `cp .sdd-upgrade/VERSION . 2>/dev/null || echo "2.0.0" > VERSION`; `echo "2.0.0" > .specs/.sdd-version`
-11. **Cleanup**: `rm -rf .sdd-upgrade`
+10. **Mapping**: Backup mapping.md, run `./scripts/generate-mapping.sh`
+11. **Version**: Copy VERSION from staging, copy to `.specs/.sdd-version`
+12. **Cleanup**: `rm -rf .sdd-upgrade`
 
-## Frontmatter Format
-
-Add to specs missing it:
+## Frontmatter Format (for specs missing it)
 
 ```yaml
 ---
@@ -58,4 +53,4 @@ updated: {today}
 
 ## Output
 
-Show inventory, execute steps, summarize what was updated vs preserved, list new capabilities.
+Show inventory of stock vs custom files, execute steps, summarize what was synced vs preserved. If `.sdd-upgrade/CHANGELOG.md` exists, show what's new.
