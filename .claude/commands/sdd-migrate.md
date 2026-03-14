@@ -4,12 +4,12 @@ description: Upgrade SDD to latest version (preserves custom commands/rules)
 
 Upgrade this project's SDD installation to the latest version.
 
-**Prerequisites**: Run `git auto-upgrade` first to stage latest files in `.sdd-upgrade/`.
+If `.sdd-upgrade/` doesn't exist yet, this command automatically runs `git auto-upgrade` to stage the files first.
 
 ## Prerequisite Checks
 
-1. Check `.sdd-upgrade/` exists → if missing, error: "Run 'git auto-upgrade' first"
-2. Check `.specs/` exists → if missing, error: "Not an SDD project, use 'git auto'"
+1. Check `.specs/` exists → if missing, error: "Not an SDD project, use 'git auto'"
+2. Check `.sdd-upgrade/` exists → if missing, auto-stage by running `git auto-upgrade`. If that fails, error: "Failed to stage upgrade files. Check network and try 'git auto-upgrade' manually."
 3. Read CURRENT version from `VERSION` or `.specs/.sdd-version` (default "1.0.0")
 4. Read TARGET version from `.sdd-upgrade/VERSION` (default "2.1.0")
 5. If TARGET <= CURRENT → "Already on latest version. No upgrade needed."

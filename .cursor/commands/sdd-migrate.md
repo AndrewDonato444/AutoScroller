@@ -2,18 +2,20 @@
 
 Upgrade an existing SDD project to the latest version from the staged template files.
 
-**Prerequisites**: Run `git auto-upgrade` first to stage the latest files in `.sdd-upgrade/`.
+If `.sdd-upgrade/` doesn't exist yet, this command automatically runs `git auto-upgrade` to stage the files first.
 
 ## Step 0: Check Prerequisites
 
 ```
-Check for .sdd-upgrade/ directory
-├── If exists → Continue
-└── If missing → ERROR: "Run 'git auto-upgrade' first to stage the latest files"
-
 Check for .specs/ directory
 ├── If exists → SDD project, continue
 └── If missing → ERROR: "Not an SDD project. Use 'git auto' for fresh install"
+
+Check for .sdd-upgrade/ directory
+├── If exists → Continue to version check
+└── If missing → Auto-stage by running: git auto-upgrade
+    ├── If succeeds → Continue to version check
+    └── If fails → ERROR: "Failed to stage upgrade files. Check your network connection and try 'git auto-upgrade' manually."
 ```
 
 ### Version Check
