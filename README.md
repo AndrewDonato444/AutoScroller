@@ -803,4 +803,6 @@ Inspired by [Ryan Carson's Compound Engineering](https://x.com/ryancarson) appro
 
 ## License
 
-MIT
+Copyright (c) 2026 Adrian Rogowski. All rights reserved.
+
+This software is proprietary. No part of it may be copied, modified, distributed, or used without the prior written permission of the copyright holder. See [LICENSE](LICENSE) for details.
