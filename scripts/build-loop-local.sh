@@ -1506,8 +1506,8 @@ parse_ready_features() {
         local id feature deps status
         id=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$2); print $2}')
         feature=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}')
-        deps=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$7); print $7}')
-        status=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$8); print $8}')
+        deps=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$(NF-2)); print $(NF-2)}')
+        status=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$(NF-1)); print $(NF-1)}')
 
         [[ -z "$id" || -z "$feature" ]] && continue
 
@@ -2047,7 +2047,7 @@ SPEC_FAILED: {reason}
     cd "$PROJECT_DIR"
     git checkout "$MAIN_BRANCH" 2>/dev/null || true
 
-    local total_elapsed=$(( $(date +%s) - SCRIPT_START ))
+    total_elapsed=$(( $(date +%s) - SCRIPT_START ))
 
     echo ""
     echo "═══════════════════════════════════════════════════════════"
@@ -2113,7 +2113,7 @@ elif [ "$BRANCH_STRATEGY" = "parallel" ]; then
     cd "$PROJECT_DIR"
     cleanup_all_worktrees
 
-    local total_elapsed=$(( $(date +%s) - SCRIPT_START ))
+    total_elapsed=$(( $(date +%s) - SCRIPT_START ))
 
     echo ""
     echo "═══════════════════════════════════════════════════════════"
@@ -2153,7 +2153,7 @@ else
         cleanup_all_worktrees
     fi
 
-    local total_elapsed=$(( $(date +%s) - SCRIPT_START ))
+    total_elapsed=$(( $(date +%s) - SCRIPT_START ))
 
     echo ""
     echo "═══════════════════════════════════════════════════════════"
