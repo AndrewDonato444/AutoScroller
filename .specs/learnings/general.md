@@ -118,13 +118,64 @@ Use `package.json` engines to fail loudly on wrong Node/pnpm version:
 
 **Why:** Catches version mismatches immediately with a clear error message before install completes. Better than silent failures or cryptic runtime errors later.
 
+### Keep Package Manager Commands Consistent
+
+If `package.json` uses `packageManager: "pnpm@..."`, ensure all scripts and env files use `pnpm` not `npm`:
+
+```bash
+# .env.local
+TEST_CHECK_CMD="pnpm test"  # GOOD
+TEST_CHECK_CMD="npm test"   # BAD - inconsistent with packageManager
+```
+
+**Why:** Mixing package managers causes lock file drift and version resolution differences. Pick one (usually declared in `packageManager` field) and use it everywhere.
+
 ---
 
 ## Debugging
 
-<!-- Common issues, debugging techniques -->
+### Zod API: .issues Not .errors
 
-_No learnings yet._
+**Gotcha:** ZodError uses `.issues` array, not `.errors` (common misconception from other validation libraries like Joi, Yup):
+
+```typescript
+// WRONG:
+const firstError = error.errors[0];  // undefined!
+
+// RIGHT:
+const firstIssue = error.issues[0];
+const fieldPath = firstIssue.path.join('.');
+```
+
+**Why:** Discovered via node REPL testing when error handling failed silently. Zod's API is different from most validation libraries — always check `.issues`.
+
+### Zod v4: issue.received May Be Undefined
+
+In Zod v4, for `invalid_type` errors, the `issue.received` field may be `undefined`. Error messages need to handle this:
+
+```typescript
+const receivedType = (firstIssue as any).received;  // May be undefined
+const valueStr = actualValue !== undefined ? ` "${actualValue}"` : '';
+
+// Renders: "expected number, got undefined 'ten'"
+// Not ideal, but field path and raw value are still present
+```
+
+**Why:** Zod v4 changed its internal issue representation. The spec documented "got string 'ten'" but the code emits "got undefined 'ten'". The field path, expected type, and raw value are still present, which is what the operator needs.
+
+### YAML Parser vs Schema Validator
+
+YAML library (`yaml` package) parses `"ten"` successfully as a string — it doesn't validate types. Type validation happens in Zod:
+
+```typescript
+// This succeeds:
+const rawConfig = parseYaml('scroll:\n  minutes: "ten"');  // { scroll: { minutes: "ten" } }
+
+// This fails:
+configSchema.parse(rawConfig);  // ZodError: expected number, got string
+```
+
+**Why:** Error messages should reference "config error" not "YAML error" when the issue is type validation. YAML parsing errors are syntax (malformed quotes, bad indentation). Zod errors are schema violations.
 
 ---
 
@@ -144,3 +195,33 @@ process.exit(0);
 ```
 
 **Why:** Premature abstraction adds indirection and complexity for code that will be deleted soon. Three similar lines of code is better than a premature abstraction.
+
+### Extract Constants for Magic Strings in Error Paths
+
+For error handling and debug paths, extract repeated strings to named constants:
+
+```typescript
+const CONFIG_DIR_NAME = 'scrollproxy';
+const CONFIG_FILE_NAME = 'config.yaml';
+const DEBUG_ENV_VAR = 'scrollproxy';
+
+// Used in multiple error messages:
+console.error(`file: ~/${CONFIG_DIR_NAME}/${CONFIG_FILE_NAME}`);
+console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
+```
+
+**Why:** Error messages often reference the same paths/variables. Constants ensure consistency and make updates (like renaming the debug env var) happen in one place.
+
+### When to Extract vs When to Keep Inline
+
+**Extract when:**
+- Complex error handling (50+ lines) → extract to `handleZodValidationError()`
+- Repeated logic across 3+ call sites → extract to helper function
+- Magic strings in error paths → extract to constants
+
+**Keep inline when:**
+- Logic is already readable (20-line decision tree)
+- Used in only one place (`expandTilde` helper, 5 lines)
+- Standard values (`utf-8` encoding literal)
+
+**Why:** Extraction has a cost (indirection, naming, navigation). Only extract when the clarity or reuse benefit outweighs that cost. A 20-line decision tree that reads like prose doesn't need extraction.

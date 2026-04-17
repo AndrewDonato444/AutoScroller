@@ -19,6 +19,30 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-16: Config Loader
+
+**Testing:**
+- process.env mocking doesn't work → use dependency injection (homeDir option)
+- Temporary directories for isolation (tmpdir + unique timestamp, cleanup in afterEach)
+- No mocking of core libraries (yaml, zod) in integration tests — verify real wiring
+- Async test assertions require Error objects, not raw ZodError instances
+
+**Code Style:**
+- Three-file config pattern (schema, defaults, load) — single responsibility per file
+- Operator-friendly error messages (field path, expected/received, file path, debug hint)
+- Extract constants for magic strings in error paths (DEBUG_ENV_VAR, CONFIG_FILE_NAME)
+- Extract function for complex error handling (50+ line handlers)
+- Skip extraction when already readable (20-line decision trees)
+
+**Tooling/Debugging:**
+- ZodError uses `.issues` not `.errors` (common misconception from Joi/Yup)
+- Zod v4: `issue.received` may be undefined — handle in error messages
+- YAML parser accepts invalid types as strings — validation errors come from Zod
+- Keep package manager commands consistent (pnpm in package.json → pnpm everywhere)
+
+**Security:**
+- Zod `.strict()` mode rejects unknown fields (anti-persona guardrail against analytics/OAuth)
+
 ### 2026-04-16: Project Scaffold
 
 **Testing:**

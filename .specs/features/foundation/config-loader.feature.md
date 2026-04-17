@@ -231,4 +231,43 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound after implementation -->
+### Three-File Config Pattern
+
+Separated config logic into three focused modules:
+- **schema.ts** — Zod validation + TypeScript types
+- **defaults.ts** — Default values + YAML template with comments
+- **load.ts** — Search order + error handling + post-processing
+
+**Why:** Each file has a single responsibility. Tests can validate schema separately from defaults, error messages stay out of schema definitions, and the YAML template is just a string constant (easy to read/maintain).
+
+### Operator-Friendly Error Messages
+
+Error messages are formatted for operators fixing config typos:
+- Field path: `scroll.minutes`
+- Expected vs received: `expected number, got undefined "ten"`
+- File path: `~/scrollproxy/config.yaml`
+- Debug hint: `(set DEBUG=scrollproxy for full trace)`
+
+No stack traces in the happy-error path (operator typo). Stack traces only when `DEBUG=scrollproxy` is set (developer debugging).
+
+**Why:** The primary persona has High patience for setup but Very Low patience for debugging. They want to know which field is wrong, what file to edit, and nothing else.
+
+### Zod Strict Mode as Anti-Persona Guardrail
+
+Schema uses `.strict()` to reject unknown fields like `analytics`, `oauth`, `telemetry`:
+
+```typescript
+export const configSchema = z.object({
+  scroll: z.object({ ... }),
+  browser: z.object({ ... }),
+  // ...
+}).strict(); // Rejects unknown fields
+```
+
+**Why:** Prevents contributor drift toward hosted-product patterns. If someone tries to add `analytics.enabled: true`, the loader fails loudly with "unknown field 'analytics'". This is the first line of defense against anti-persona features creeping in.
+
+### Deferred Validation for Optional Secrets
+
+`claude.apiKey` is optional at load time (allows `pnpm scroll --dry-run` without an API key). Validation is deferred to the summarizer feature that actually needs it.
+
+**Why:** Separation of concerns. The config loader loads and validates structure; the summarizer validates that required secrets are present before making API calls. This keeps feature boundaries clean.

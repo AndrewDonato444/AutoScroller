@@ -6,9 +6,23 @@ Patterns for testing in this codebase.
 
 ## Mocking
 
-<!-- Patterns for mocking dependencies, APIs, etc. -->
+### Don't Mock process.env — Use Dependency Injection
 
-_No learnings yet._
+**Problem:** Tried to mock `process.env.HOME` with `Object.defineProperty()` — Node.js rejects this.
+
+**Solution:** Pass `homeDir` as an option parameter instead:
+
+```typescript
+export async function loadConfig(options: LoadConfigOptions = {}): Promise<Config> {
+  const home = options.homeDir ?? homedir();
+  // ... use home instead of process.env.HOME
+}
+
+// In tests:
+await loadConfig({ homeDir: testHomeDir });
+```
+
+**Why:** Node.js's `process.env` object is read-only in many contexts. Dependency injection is simpler, more reliable, and makes the function easier to test without framework-specific mocking.
 
 ---
 
@@ -86,6 +100,60 @@ it('should run pnpm scroll and print version banner', () => {
 
 ## Edge Cases
 
-<!-- Common edge cases to always test -->
+### File System Isolation with Temporary Directories
 
-_No learnings yet._
+Use temporary directories with unique timestamps for each test:
+
+```typescript
+let testTmpDir: string;
+let testHomeDir: string;
+
+beforeEach(() => {
+  testTmpDir = join(tmpdir(), 'scrollproxy-test-' + Date.now());
+  testHomeDir = join(testTmpDir, 'home');
+  mkdirSync(testHomeDir, { recursive: true });
+});
+
+afterEach(() => {
+  if (existsSync(testTmpDir)) {
+    rmSync(testTmpDir, { recursive: true, force: true });
+  }
+});
+```
+
+**Why:** Prevents tests from interfering with each other or the developer's real config files. The timestamp ensures parallel test runs don't collide.
+
+### No Mocking of Core Libraries in Integration Tests
+
+For config loading, extractor logic, or other integration tests, use real libraries (yaml, zod) instead of mocks:
+
+```typescript
+// GOOD: Real integration test
+const config = await loadConfig({ path: testConfigPath });
+expect(config.scroll.minutes).toBe(10);
+
+// BAD: Mocking the library we're testing
+vi.mock('yaml', () => ({ parse: vi.fn() }));
+```
+
+**Why:** Integration tests verify that your code works with the real library APIs. Mocking defeats this purpose. Unit tests are for isolated logic; integration tests prove the wiring works.
+
+### Async Test Assertions Require Error Objects
+
+When testing error cases with async functions, throw `new Error()` instances, not raw library errors:
+
+```typescript
+// GOOD: Throw Error with clear message
+catch (error) {
+  if (error instanceof ZodError) {
+    throw new Error(`config error: ${fieldPath} — ${message}`);
+  }
+}
+
+// BAD: Re-throw raw ZodError
+catch (error) {
+  throw error;  // Test assertions on ZodError properties are fragile
+}
+```
+
+**Why:** Vitest and other test frameworks expect Error instances with `.message` properties. Raw ZodError has `.issues` arrays and other non-standard shapes, making assertions brittle.
