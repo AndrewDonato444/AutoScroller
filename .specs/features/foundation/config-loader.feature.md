@@ -75,9 +75,11 @@ Given `config.yaml` sets `scroll.minutes: "ten"` (string, not number)
 When `loadConfig()` is called
 Then the process exits with a non-zero status
 And stderr names the field path (`scroll.minutes`)
-And stderr names the expected type (`number`) and what was received (`string "ten"`)
+And stderr names the expected type (`number`) and includes the received value (`"ten"`)
 And stderr names the file path so the operator knows what to edit
 And no stack trace unless `DEBUG=scrollproxy` is set
+
+(Note: the received type label comes from Zod's `issue.received` field. Under Zod v4 this field may be `undefined`, so the rendered message can read `expected number, got undefined "ten"`. The field path, expected type, and raw value are always present.)
 
 ### Scenario: Unknown fields are rejected (strict mode)
 
@@ -185,7 +187,7 @@ Typo path:
 
 ```
 $ pnpm scroll
-  config error: scroll.minutes — expected number, got string "ten"
+  config error: scroll.minutes — expected number, got undefined "ten"
   file: ~/scrollproxy/config.yaml
   (set DEBUG=scrollproxy for full trace)
 $
