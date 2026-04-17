@@ -107,10 +107,12 @@ claude:
 
       const result = await runCli(['scroll']);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('scrollproxy');
-      // Stub should print "not yet wired"
-      expect(result.stdout).toMatch(/not yet wired|scroll handler/i);
+      // Should print startup message with config values
+      expect(result.stdout).toContain('scrolling x.com for');
+      expect(result.stdout).toContain('persistent context:');
+      // Will exit with error code 1 because no Chromium profile exists
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('no Chromium profile found');
     });
   });
 
@@ -121,10 +123,11 @@ claude:
 
       const result = await runCli(['scroll', '--minutes', '3']);
 
-      expect(result.exitCode).toBe(0);
-      // The handler should receive minutes: 3
-      // For now, stub should acknowledge the override
-      expect(result.stdout).toMatch(/3|minutes.*3/i);
+      // Should print startup message with overridden minutes value
+      expect(result.stdout).toContain('scrolling x.com for 3m');
+      // Will exit with error code 1 because no Chromium profile exists
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('no Chromium profile found');
     });
 
     it('should not mutate the underlying config object', async () => {
@@ -177,9 +180,11 @@ claude:
 
       const result = await runCli(['scroll', '--dry-run']);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toMatch(/dry-run|dry run/i);
-      expect(result.stdout).toMatch(/not yet wired/i);
+      // Should print startup message
+      expect(result.stdout).toContain('scrolling x.com for');
+      // Will exit with error code 1 because no Chromium profile exists
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('no Chromium profile found');
     });
   });
 
@@ -196,9 +201,11 @@ claude:
 
       const result = await runCli(['scroll', '--config', customConfigPath]);
 
-      expect(result.exitCode).toBe(0);
       // Should use custom config with minutes: 2
-      expect(result.stdout).toMatch(/2|minutes.*2/i);
+      expect(result.stdout).toContain('scrolling x.com for 2m');
+      // Will exit with error code 1 because no Chromium profile exists
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('no Chromium profile found');
     });
   });
 

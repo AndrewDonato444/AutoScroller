@@ -139,27 +139,25 @@ describe('Project Scaffold', () => {
   });
 
   describe('UT-005: CLI execution', () => {
-    it('should run pnpm scroll and print version banner', () => {
-      const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf-8'));
-
+    it('should run pnpm scroll and detect missing profile', () => {
       try {
-        const output = execSync('pnpm scroll', {
+        execSync('pnpm scroll', {
           cwd: rootDir,
           encoding: 'utf-8',
           stdio: 'pipe'
         });
-
-        // Should include package name and version
-        expect(output).toContain('scrollproxy');
-        expect(output).toContain(pkg.version);
-        expect(output).toContain('feed not yet wired');
+        // If we get here, that's unexpected
+        throw new Error('Expected pnpm scroll to exit with error when profile missing');
       } catch (error: any) {
-        // Fail the test with the actual error
-        throw new Error(`pnpm scroll failed: ${error.message}\nStdout: ${error.stdout}\nStderr: ${error.stderr}`);
+        // Should exit with code 1 and print error about missing profile
+        expect(error.status).toBe(1);
+        const output = error.stdout + error.stderr;
+        expect(output).toContain('scrolling x.com for');
+        expect(output).toContain('no Chromium profile found');
       }
     });
 
-    it('should exit with status code 0', () => {
+    it('should exit with status code 1 when profile missing', () => {
       let exitCode = -1;
 
       try {
@@ -173,7 +171,7 @@ describe('Project Scaffold', () => {
         exitCode = error.status;
       }
 
-      expect(exitCode).toBe(0);
+      expect(exitCode).toBe(1);
     });
   });
 

@@ -20,8 +20,9 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 |--------|---------|--------|-------|------------|--------|
 | foundation | [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md) | `src/cli/index.ts` | tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Config Loader](.specs/features/foundation/config-loader.feature.md) | `src/config/load.ts` | tests/foundation/config-loader.test.ts | - | implemented |
-| foundation | [Login Command](.specs/features/foundation/login.feature.md) | `src/cli/login.ts` | tests/foundation/login.test.ts | - | specced |
+| foundation | [Login Command](.specs/features/foundation/login.feature.md) | `src/cli/login.ts` | tests/foundation/login.test.ts, tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md) | `package.json` | tests/foundation/project-scaffold.test.ts | - | implemented |
+| foundation | [Scroller](.specs/features/foundation/scroller.feature.md) | `src/scroll/scroller.ts` | tests/foundation/scroller.test.ts | - | implemented |
 
 ---
 
@@ -30,10 +31,10 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | Status | Count |
 |--------|-------|
 | stub | 0 |
-| specced | 1 |
+| specced | 0 |
 | tested | 0 |
-| implemented | 3 |
-| **Total** | **4** |
+| implemented | 5 |
+| **Total** | **5** |
 
 ---
 
@@ -45,7 +46,7 @@ _None_
 
 ### Specced
 
-- [Login Command](.specs/features/foundation/login.feature.md)
+_None_
 
 ### Tested
 
@@ -55,7 +56,9 @@ _None_
 
 - [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md)
 - [Config Loader](.specs/features/foundation/config-loader.feature.md)
+- [Login Command](.specs/features/foundation/login.feature.md)
 - [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md)
+- [Scroller](.specs/features/foundation/scroller.feature.md)
 
 ---
 
