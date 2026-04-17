@@ -12,11 +12,12 @@ personas:
 status: implemented
 created: 2026-04-16
 updated: 2026-04-16
+
 ---
 
 # CLI Entry + Arg Parsing
 
-**Source File**: `src/cli/index.ts`, `src/cli/args.ts`, `src/cli/scroll.ts`, `src/cli/login.ts`, `src/cli/replay.ts`, `src/index.ts`
+**Source File**: `src/cli/index.ts`, `src/cli/args.ts`, `src/cli/scroll.ts`, `src/cli/login.ts`, `src/cli/replay.ts`, `src/index.ts`, `src/login.ts`, `src/replay.ts`
 **Design System**: N/A (CLI tool — no UI tokens)
 **Personas**: `.specs/personas/primary.md`, `.specs/personas/anti-persona.md`
 
@@ -66,7 +67,7 @@ And the process exits with status `2`
 Given any valid config
 When the operator runs `pnpm scroll --dry-run`
 Then the scroll handler receives `dryRun: true` in its flags
-And the current stub behavior prints `dry-run: scroll + extract only, summarizer and writer skipped — not yet wired`
+And the current stub behavior prints `scrollproxy v0.0.1 — dry-run: scroll + extract only, summarizer and writer skipped — feed not yet wired`
 And the process exits with status `0`
 (Real skip logic lands in features 6, 7, 12, 13. This feature just makes sure the flag is parsed and threaded through.)
 
@@ -175,7 +176,7 @@ Normal daily run:
 
 ```
 $ pnpm scroll
-  scrollproxy v0.0.1 — scroll handler not yet wired (features 4–7)
+  scrollproxy v0.0.1 — feed not yet wired (effective minutes: 10)
 $
 ```
 
@@ -183,7 +184,7 @@ Dry-run:
 
 ```
 $ pnpm scroll --dry-run
-  scrollproxy v0.0.1 — dry-run: scroll + extract only, summarizer and writer skipped — not yet wired
+  scrollproxy v0.0.1 — dry-run: scroll + extract only, summarizer and writer skipped — feed not yet wired
 $
 ```
 
@@ -191,7 +192,7 @@ Minute override:
 
 ```
 $ pnpm scroll --minutes 3
-  scrollproxy v0.0.1 — scroll handler not yet wired (effective minutes: 3)
+  scrollproxy v0.0.1 — feed not yet wired (effective minutes: 3)
 $
 ```
 
