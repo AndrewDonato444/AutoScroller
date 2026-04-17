@@ -156,8 +156,9 @@ And a dry run prints: `dry-run complete: <N> ticks over <M>s — <P> posts extra
 
 Given X changes the test-id for the post article from `tweet` to `post`
 When a contributor patches the extractor
-Then they edit one named constant (`POST_SELECTOR`, `AD_MARKER_SELECTORS`, `METRIC_SELECTORS`, `PERMALINK_SELECTOR`, `MEDIA_SELECTORS`) at the top of `extractor.ts`
+Then they edit one named constant (`POST_SELECTOR`, `AD_MARKER_SELECTORS`, `AD_LABEL_TEXTS`, `PERMALINK_SELECTOR`, `USER_NAME_SELECTOR`, `TWEET_TEXT_SELECTOR`, `TIME_SELECTOR`, `VERIFIED_ICON_SELECTOR`, `MEDIA_IMAGE_SELECTOR`, `MEDIA_VIDEO_SELECTOR`, or the `METRIC_VALUE_PATTERN` regex) at the top of `extractor.ts`
 And no selector strings appear inline inside loop bodies or helper functions
+(Metric fields are identified by matching aria-label substrings (`"repl"`, `"repost"`, `"like"`, `"view"`) on `button`/`a` descendants and parsing the leading numeric portion with `METRIC_VALUE_PATTERN`; there is no dedicated `METRIC_SELECTORS` constant.)
 (Highest-risk Phase 1 item: selector churn is expected. One-file patch is the anti-frustration move.)
 
 ### Scenario: Extractor adds no new runtime dependencies
