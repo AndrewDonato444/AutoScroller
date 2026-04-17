@@ -12,11 +12,12 @@ personas:
 status: implemented
 created: 2026-04-16
 updated: 2026-04-16
+
 ---
 
 # Project Scaffold
 
-**Source File**: `package.json`, `tsconfig.json`, `.nvmrc`, `src/index.ts`
+**Source File**: `package.json`, `tsconfig.json`, `.nvmrc`, `src/index.ts`, `src/cli/login.ts`, `src/cli/replay.ts`
 **Design System**: N/A (CLI tool — no UI tokens)
 **Personas**: `.specs/personas/primary.md`, `.specs/personas/anti-persona.md`
 
@@ -143,7 +144,8 @@ None — CLI tool, no visual components.
 - Real CLI argument parsing (feature 3) — this feature only ships `pnpm scroll` as a script that runs `src/index.ts`
 - Playwright install (feature 4)
 - Anything that requires network calls
-- Test runner setup — added when feature 2 needs the first test (Zod schema)
+
+Note: Test runner setup (vitest) shipped with this feature so the scaffold itself could be verified (UT-001 through UT-006 in `tests/foundation/project-scaffold.test.ts`). Originally planned for feature 2 (Zod schema), but pulling it forward cost nothing and gave the scaffold its own regression coverage.
 
 ## Persona Revision Notes
 
