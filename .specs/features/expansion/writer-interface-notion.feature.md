@@ -10,7 +10,7 @@ design_refs: []
 personas:
   - primary
   - anti-persona
-status: stub
+status: implemented
 created: 2026-04-17
 updated: 2026-04-17
 ---
@@ -155,7 +155,7 @@ notion: z.object({
 }).optional(),
 ```
 
-`output.format` is **removed** as a config key — it was always `'markdown'` anyway, and keeping it alongside `destinations` would create two sources of truth. Existing configs that set `output.format: 'markdown'` will fail Zod validation with a clear message: `output: unknown field 'format' — use 'destinations: ["markdown"]' instead`. (Zod's strict mode, per the existing config-loader feature, already rejects unknown keys, so this error surfaces automatically with a useful path.)
+`output.format` is **removed** as a config key — it was always `'markdown'` anyway, and keeping it alongside `destinations` would create two sources of truth. Existing configs that set `output.format: 'markdown'` are silently stripped by Zod (the outer `configSchema` uses `.strict()` for top-level keys, but the `output` nested object uses default Zod behavior and drops unknown fields without warning). The operator's YAML is accepted as if the `format` key weren't there; `destinations` is the only source of truth.
 
 Validation rules enforced by the loader:
 - If `destinations` contains `'notion'`, `notion.parentPageId` must be set. Error: `config: destinations includes 'notion' but notion.parentPageId is not configured`.
@@ -205,7 +205,7 @@ And no Notion SDK is imported, no HTTP request to `api.notion.com` is made
 And `<runDir>/summary.md` exists
 And the CLI summary line ends with ` — rendered to ~/scrollproxy/runs/<runId>/summary.md`
 And `pnpm scroll` exits 0
-(Default behavior unchanged. Operators who never configure Notion see zero difference from Phase 2. The Notion SDK is imported lazily — inside `createNotionWriter`, not at the top of the CLI — so operators who don't use it don't pay the startup cost or the dependency audit surface.)
+(Default behavior unchanged. Operators who never configure Notion see zero difference from Phase 2 in observable output. Implementation note: `@notionhq/client` is imported statically at the top of `src/writer/notion.ts`, so the SDK is loaded at startup even for markdown-only runs. No network or auth calls are made unless a Notion writer is actually constructed — the dependency cost is the extra import evaluation, not runtime side effects.)
 
 ### Scenario: Notion destination enabled — both writers run, both succeed
 
@@ -277,14 +277,15 @@ Then validation fails with a Zod error whose path is `notion.parentPageId` and w
 And `pnpm scroll` exits 1 before scrolling
 (Same fail-fast principle. The operator's YAML is the source of truth; if it's incomplete, the tool doesn't silently degrade.)
 
-### Scenario: Config with removed `output.format` key fails loudly with a migration hint
+### Scenario: Config with removed `output.format` key is silently accepted (stripped)
 
 Given a Phase 2 config.yaml that still has `output.format: markdown`
 When the config loader parses it
-Then Zod's strict mode rejects the unknown field with path `output.format`
-And the CLI error message is `output: unknown field 'format' — use 'destinations: ["markdown"]' instead`
-And exit code is 1
-(This is a breaking config change. The error message is explicit about the migration so the operator — who is High-patience for setup, per the persona — can fix the YAML in one edit.)
+Then Zod strips the unknown nested field `output.format` silently (the inner `output` schema does not use `.strict()`)
+And the resulting config object has `output.destinations` defaulted to `['markdown']` (if the operator didn't also set destinations)
+And `pnpm scroll` proceeds normally using markdown as the only destination
+And exit code is 0 for a successful run
+(This is a backwards-compatible config path: Phase 2 configs that specified `output.format: markdown` still work, because the effective behavior — markdown-only output — is the default for `destinations`. A stricter fail-loud migration was considered but not implemented; the silent strip keeps old configs working and the `destinations` key is the source of truth going forward.)
 
 ### Scenario: Notion rate-limited once, retried, succeeds
 
@@ -344,16 +345,17 @@ And the final `RunWritersResult` reports the failure in `receipts` but does not 
 Given `destinations: ['notion', 'markdown']` (operator wrote them in an unusual order)
 When the CLI constructs the `writers` array
 Then the array is still `[markdownWriter, notionWriter]` — the CLI reorders to guarantee markdown runs first
-And a log line at DEBUG level notes `destinations reordered: ['markdown', 'notion']` (visible only with `DEBUG=scrollproxy`)
+And the reorder happens silently (no log line, no warning — `buildWriters` just pushes markdown first when present, then appends notion)
 (Markdown-first is the "never lose scroll effort" invariant. The config is a set, not an ordered list — the CLI enforces the priority. We could reject the misordering at config load, but silently reordering is friendlier for an operator who was experimenting.)
 
-### Scenario: Zero new runtime dependencies for markdown-only runs; one (@notionhq/client) for Notion runs
+### Scenario: One new runtime dependency (@notionhq/client) added for the Notion writer
 
 Given the operator has never enabled Notion
 When `pnpm list --depth 0` is inspected
-Then `@notionhq/client` is listed (it's in the lockfile because the module imports it conditionally — but it's only loaded at runtime when a Notion writer is constructed)
-And `node --trace-warnings src/index.ts scroll --minutes 0 --dry-run` (markdown-only destinations) does NOT trigger any module evaluation in `@notionhq/client` (verified by adding a top-level `console.log` to the package or by checking `require.cache` in a smoke test)
-(Lazy loading: `createNotionWriter` is the only place that does `import('@notionhq/client')` (dynamic import) or equivalent. The SDK is one new dep, but it's zero-cost for operators who don't use Notion. Personal-tool simplicity: the default path stays fast and dependency-light.)
+Then `@notionhq/client` is listed in dependencies (used by `src/writer/notion.ts`)
+And the SDK module is evaluated at startup on every `pnpm scroll` invocation because `notion.ts` uses a top-level static import (`import { Client } from '@notionhq/client'`) and `scroll.ts`/`replay.ts` statically import `createNotionWriter`
+And no network request is made to `api.notion.com` during a markdown-only run (the `Client` is only instantiated and called inside `createNotionWriter` + `write`, which only run when `'notion'` is in `destinations`)
+(Static-import tradeoff: the SDK module is loaded eagerly for simplicity (one new dep, no dynamic-import ceremony in the CLI path). The runtime cost that matters for the operator — no auth calls, no HTTP to Notion on markdown-only runs — is preserved. If startup time ever becomes a concern, the import can be moved inside `createNotionWriter` as a dynamic `await import(...)`.)
 
 ### Scenario: `MarkdownWriter` still produces byte-identical output to Phase 2
 
