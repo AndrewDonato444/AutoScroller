@@ -24,26 +24,30 @@ echo "======================================================================"
 
 cd "$(dirname "$0")/.." || exit 1
 
-# Kill any stale ScrollProxy Chrome from a previous run. We relaunch a fresh
-# Chrome on every scheduled run to avoid Chrome's 60-minute hang-watchdog
-# killing an idle browser between runs. Session cookies persist in the
-# user-data-dir so login survives the restart.
-#
-# `pgrep -f` matches the full command line — we target processes that were
-# launched with our specific user-data-dir flag. That way we never touch the
-# user's normal Chrome.
-pkill -f 'user-data-dir=.*scrollproxy/chrome' 2>/dev/null || true
-
-# Give Chrome a moment to actually exit and release the profile lock.
-sleep 2
+# Chrome is managed by the com.scrollproxy.chrome-daemon launchd agent —
+# it's always running, launchd restarts it on crash, we just attach via CDP.
+# Don't kill Chrome here; that would fight launchd's KeepAlive.
 
 # 10 minutes is the sweet spot per Andrew's preference.
 pnpm run scroll --minutes 10
 RUN_EXIT=$?
 
-# After the scroll, shut ScrollProxy's Chrome down so it doesn't sit idle
-# for 6 hours waiting to get killed by the hang watchdog or balloon RAM.
-# ensureChromeRunning() will boot a fresh one on the next scheduled run.
-pkill -f 'user-data-dir=.*scrollproxy/chrome' 2>/dev/null || true
+# Sync summary files to the SecondBrain git remote so a cloud-scheduled
+# agent can read them without needing local filesystem access.
+# .gitignore in SecondBrain excludes raw.json + screenshots/ from commits,
+# so only summary.json + summary.md are pushed.
+if [ $RUN_EXIT -eq 0 ]; then
+  BRAIN_DIR="$HOME/SecondBrain"
+  if [ -d "$BRAIN_DIR/.git" ]; then
+    (
+      cd "$BRAIN_DIR" || exit 0
+      git add projects/scrollproxy/runs/ 2>/dev/null || true
+      if ! git diff --cached --quiet 2>/dev/null; then
+        git -c commit.gpgsign=false commit -m "scrollproxy: sync run summaries ($(date '+%Y-%m-%dT%H:%M'))" >/dev/null 2>&1 || true
+        git push origin main >/dev/null 2>&1 || echo "[scrollproxy] git push failed; summaries committed locally only"
+      fi
+    )
+  fi
+fi
 
 exit $RUN_EXIT

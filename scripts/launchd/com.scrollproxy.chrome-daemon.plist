@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.scrollproxy.chrome-daemon</string>
+
+  <!-- Chrome launched directly by launchd — parent is launchd itself, so
+       the OS never sees it as an orphaned background process. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Google Chrome.app/Contents/MacOS/Google Chrome</string>
+    <string>--remote-debugging-port=9222</string>
+    <string>--user-data-dir=__HOME__/scrollproxy/chrome</string>
+    <string>--no-first-run</string>
+    <string>--no-default-browser-check</string>
+    <string>--disable-features=PrivacySandboxSettings4</string>
+    <!-- Prevent Chrome from throttling itself when in the background,
+         which can cause the hang watchdog to false-positive. -->
+    <string>--disable-background-timer-throttling</string>
+    <string>--disable-backgrounding-occluded-windows</string>
+    <string>--disable-renderer-backgrounding</string>
+    <!-- Start URL so there's always a tab to attach to -->
+    <string>https://x.com/home</string>
+  </array>
+
+  <!-- Start on user login AND keep running forever -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Give Chrome 10s between crash restarts so we don't restart-loop -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/scrollproxy-chrome.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/scrollproxy-chrome.log</string>
+
+  <!-- Chrome inherits a minimal env; give it what it needs -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+
+  <!-- Session type: Aqua so Chrome can render (GUI context) -->
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+</dict>
+</plist>
