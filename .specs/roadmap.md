@@ -22,8 +22,8 @@
 | Status | Count |
 |--------|-------|
 | ✅ Completed | 5 |
-| 🔄 In Progress | 0 |
-| ⬜ Pending | 11 |
+| 🔄 In Progress | 1 |
+| ⬜ Pending | 10 |
 | ⏸️ Blocked | 0 |
 
 **Last updated**: 2026-04-16
@@ -41,7 +41,7 @@
 | 3 | CLI entry + arg parsing (`scroll`, `login`, `--minutes`, `--dry-run`) | vision | - | S | 2 | ✅ |
 | 4 | Login command (Playwright persistent context, manual login) | vision | - | M | 3 | ✅ |
 | 5 | Scroller (human-like wheel scrolling + jitter + pauses) | vision | - | M | 4 | ✅ |
-| 6 | Extractor (DOM parse: author, text, metrics, media, skip ads) | vision | - | L | 5 | ⬜ |
+| 6 | Extractor (DOM parse: author, text, metrics, media, skip ads) | vision | - | L | 5 | 🔄 |
 | 7 | Raw JSON writer (`~/scrollproxy/runs/<run-id>/raw.json`) | vision | - | S | 6 | ⬜ |
 
 **Phase 1 exit criteria**: `pnpm login` works once; `pnpm scroll --minutes 3` produces a valid `raw.json` with ~30+ extracted posts and zero ads.

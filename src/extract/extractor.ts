@@ -18,6 +18,11 @@ export const MEDIA_IMAGE_SELECTOR = 'img[src*="pbs.twimg.com"]';
 export const MEDIA_VIDEO_SELECTOR = 'video';
 
 /**
+ * Regex pattern for extracting metric values from aria-labels.
+ */
+const METRIC_VALUE_PATTERN = /^([\d.,kKmM]+)/;
+
+/**
  * Author metadata for a post.
  */
 export interface Author {
@@ -132,6 +137,35 @@ function extractPostId(url: string | null | undefined): string | null {
 
   const match = url.match(/\/status\/(\d+)/);
   return match ? match[1] : null;
+}
+
+/**
+ * Record a metric failure if both raw and parsed values are null.
+ */
+function recordMetricFailure(
+  metricName: string,
+  rawValue: string | null,
+  parsedValue: number | null,
+  postId: string,
+  tickIndex: number,
+  failures: SelectorFailure[]
+): void {
+  if (rawValue === null && parsedValue === null) {
+    failures.push({
+      field: `metrics.${metricName}`,
+      postIdOrIndex: postId,
+      tickIndex,
+      reason: 'metric element not found',
+    });
+  }
+}
+
+/**
+ * Normalize a permalink to a full URL.
+ * Adds https://x.com prefix if the permalink is a relative path.
+ */
+function normalizePermalink(permalink: string): string {
+  return permalink.startsWith('http') ? permalink : `https://x.com${permalink}`;
 }
 
 /**
@@ -323,7 +357,7 @@ async function extractMetrics(
   failures: SelectorFailure[]
 ): Promise<Metrics> {
   try {
-    const result = await page.evaluate(({ article }) => {
+    const result = await page.evaluate(({ article, metricPattern }) => {
       // Find buttons and links with aria-labels containing metric names
       const buttons = article.querySelectorAll('button, a');
       const metrics = {
@@ -333,27 +367,26 @@ async function extractMetrics(
         views: null,
       };
 
+      const pattern = new RegExp(metricPattern);
+
       for (const btn of buttons) {
         const ariaLabel = btn.getAttribute('aria-label') || '';
         const lowerLabel = ariaLabel.toLowerCase();
+        const match = ariaLabel.match(pattern);
 
         if (lowerLabel.includes('repl')) {
-          const match = ariaLabel.match(/^([\d.,kKmM]+)/);
           metrics.replies = match ? match[1] : null;
         } else if (lowerLabel.includes('repost')) {
-          const match = ariaLabel.match(/^([\d.,kKmM]+)/);
           metrics.reposts = match ? match[1] : null;
         } else if (lowerLabel.includes('like')) {
-          const match = ariaLabel.match(/^([\d.,kKmM]+)/);
           metrics.likes = match ? match[1] : null;
         } else if (lowerLabel.includes('view')) {
-          const match = ariaLabel.match(/^([\d.,kKmM]+)/);
           metrics.views = match ? match[1] : null;
         }
       }
 
       return metrics;
-    }, { article });
+    }, { article, metricPattern: METRIC_VALUE_PATTERN.source });
 
     const parsedMetrics = {
       replies: parseMetric(result.replies),
@@ -363,38 +396,10 @@ async function extractMetrics(
     };
 
     // Record selector failures for missing metrics
-    if (result.replies === null && parsedMetrics.replies === null) {
-      failures.push({
-        field: 'metrics.replies',
-        postIdOrIndex: postId,
-        tickIndex,
-        reason: 'metric element not found',
-      });
-    }
-    if (result.reposts === null && parsedMetrics.reposts === null) {
-      failures.push({
-        field: 'metrics.reposts',
-        postIdOrIndex: postId,
-        tickIndex,
-        reason: 'metric element not found',
-      });
-    }
-    if (result.likes === null && parsedMetrics.likes === null) {
-      failures.push({
-        field: 'metrics.likes',
-        postIdOrIndex: postId,
-        tickIndex,
-        reason: 'metric element not found',
-      });
-    }
-    if (result.views === null && parsedMetrics.views === null) {
-      failures.push({
-        field: 'metrics.views',
-        postIdOrIndex: postId,
-        tickIndex,
-        reason: 'metric element not found',
-      });
-    }
+    recordMetricFailure('replies', result.replies, parsedMetrics.replies, postId, tickIndex, failures);
+    recordMetricFailure('reposts', result.reposts, parsedMetrics.reposts, postId, tickIndex, failures);
+    recordMetricFailure('likes', result.likes, parsedMetrics.likes, postId, tickIndex, failures);
+    recordMetricFailure('views', result.views, parsedMetrics.views, postId, tickIndex, failures);
 
     return parsedMetrics;
   } catch (error: any) {
@@ -591,9 +596,7 @@ async function extractQuotedPost(
     // Build the quoted post object
     const quotedPost: ExtractedPost = {
       id: postId,
-      url: permalink.startsWith('http')
-        ? permalink
-        : `https://x.com${permalink}`,
+      url: normalizePermalink(permalink),
       author,
       text,
       postedAt,
@@ -660,9 +663,7 @@ async function parseArticle(
 
     const post: ExtractedPost = {
       id: postId,
-      url: permalink.startsWith('http')
-        ? permalink
-        : `https://x.com${permalink}`,
+      url: normalizePermalink(permalink),
       author,
       text,
       postedAt,
