@@ -267,6 +267,7 @@ console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
 - Magic strings in error paths → extract to constants
 - Validation + setup logic that appears in multiple similar contexts → extract to `ensureUserDataDir()`
 - Success/failure detection with multi-line conditional logic → extract to `isLoginSuccessful()`
+- Multi-step conditional logic with clear single responsibility → extract to `calculatePauseDuration()`
 
 **Keep inline when:**
 - Logic is already readable (20-line decision tree)
@@ -274,8 +275,11 @@ console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
 - Standard values (`utf-8` encoding literal)
 - Contextual error messages that reference specific config fields — inline is clearer
 - Tightly coupled lifecycle management (try-catch-finally with promise resolution)
+- Extraction would require passing 6+ parameters — that's coupling, not clarity
 
 **Why:** Extraction has a cost (indirection, naming, navigation). Only extract when the clarity or reuse benefit outweighs that cost. A 20-line decision tree that reads like prose doesn't need extraction. Contextual error messages benefit from being near the validation logic they describe.
+
+**Extract Till You Drop:** Keep extracting until each function has a single responsibility and is <30 lines. Stop when extraction creates more coupling than it removes (6+ parameters is a signal to stop).
 
 ### Exit Codes at Module Level
 
@@ -401,3 +405,44 @@ source: src/cli/index.ts
 - After implementation complete and drift-checked → `status: implemented`
 
 **Learning:** Status is part of the frontmatter contract. If drift-check agents are reconciling spec vs code, they should also verify status matches reality and update it if needed.
+
+### Interface Forward Compatibility for Pending Features
+
+**Pattern:** Add parameters to interface early for upcoming features, but don't destructure them in function signatures until the feature is actually implemented.
+
+```typescript
+// Interface: documents what's coming
+export interface ScrollOptions {
+  userDataDir: string;
+  dryRun: boolean;  // For feature #15 (scheduled for Phase 2), not used yet
+  onTick?: (ctx: TickHookContext) => Promise<void>;
+}
+
+// Function: only destructure what's used now
+export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
+  const { userDataDir, onTick, rng = Math.random } = options;
+  // dryRun NOT destructured — will be added when feature #15 lands
+}
+```
+
+**Why:** Avoids TypeScript TS6133 unused variable errors while keeping interface stable. When feature #15 lands, just add `dryRun` to the destructuring — no signature change needed. Interface changes are cheap; function signature changes require coordination.
+
+**Anti-pattern:** Destructuring unused parameters to "match the interface" creates linter warnings and confusion about what's actually implemented.
+
+### 0-Based Index Documentation in Specs
+
+**Problem:** Code uses 0-based indexing (`tickIndex: 0` for first tick), but test error messages and human language naturally use 1-based counting ("tick 1 hook error" on the 2nd call).
+
+**Solution:** Explicitly document the indexing in the spec:
+
+```markdown
+### Scenario: Tick hook exposes the page after each scroll
+...
+Then `onTick({ page, tickIndex, elapsedMs })` is awaited
+And `tickIndex` is 0-indexed (first tick is `tickIndex: 0`)
+And if `onTick` throws, the error is logged as `tick <N> hook error: <message>`
+```
+
+**Why:** Prevents drift between spec, code, and tests. The spec clarifies that `tickIndex: 0` is the first tick, while the error message uses `tickIndex + 1` for human readability ("tick 1 hook error" when `tickIndex: 0` throws). Without this note, drift agents flag a mismatch between 0-based code and 1-based error messages.
+
+**When to apply:** Any time code uses 0-based indexing but user-facing output (logs, errors, CLI messages) uses 1-based counting, document the mapping in the spec.

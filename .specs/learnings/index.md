@@ -19,6 +19,28 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-16: Scroller
+
+**Helper Extraction:**
+- Extract Till You Drop — keep extracting until each function is <30 lines with single responsibility
+- Stop when extraction creates coupling (6+ parameters is a signal)
+- Applied: extracted 4 helpers from scroll loop, stopped before over-abstracting
+
+**Interface Design:**
+- Forward compatibility: add parameters to interface early for pending features
+- Don't destructure unused parameters until feature lands — avoids TS6133 errors
+- Interface changes are cheap; signature changes require coordination
+
+**Spec Precision:**
+- Timing precision for async callbacks: "after X and Y" is ambiguous
+- Be explicit: "after X (and before Y), callback is awaited before Y starts"
+- 0-based indexing in code vs 1-based in error messages must be documented
+
+**Refactoring:**
+- Single Responsibility Principle: each extracted helper handles one concern
+- Magic number elimination: `MS_PER_MINUTE` constant for time conversions
+- Centralize error handling: `invokeTickHook` wraps try-catch consistently
+
 ### 2026-04-16: Login Command
 
 **Playwright:**

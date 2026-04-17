@@ -297,4 +297,44 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound -->
+### Interface Forward Compatibility for Pending Features
+
+**Pattern:** The `dryRun` parameter was added to `ScrollOptions` interface for feature #15 (scheduled in Phase 2) but not used in current implementation. Kept in interface but not destructured in function signature to avoid TypeScript TS6133 unused variable error.
+
+```typescript
+// Interface: forward compatible
+export interface ScrollOptions {
+  dryRun: boolean;  // For feature #15, not used yet
+  // ...
+}
+
+// Function: only destructure what's used now
+export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
+  const { userDataDir, headless, viewport, budgetMinutes, jitterMs, ... } = options;
+  // dryRun NOT destructured — will be added when feature #15 lands
+}
+```
+
+**Why:** Clean separation between interface definition (forward compatibility) and actual usage (current feature scope). Interface changes are cheap; adding parameters later requires no signature changes.
+
+### Helper Extraction: Extract Till You Drop
+
+**Applied:** Extracted 4 helper functions from `runScroll` to reduce complexity:
+1. `calculatePauseDuration` — pause logic (normal vs long pause)
+2. `invokeTickHook` — tick hook invocation with error handling
+3. `initializeBrowserSession` — browser context setup + session validation
+4. `MS_PER_MINUTE` constant — magic number elimination
+
+**Stopped:** Further extraction of scroll loop body would require passing 6+ parameters (page, tickCount, startTime, budgetMs, rng, onTick) and increase complexity rather than reducing it.
+
+**Principle:** Extract until each function has a single responsibility and is <30 lines. Stop when extraction creates more coupling than clarity.
+
+### Spec Timing Precision for Async Callbacks
+
+**Drift found:** Spec said `onTick` is awaited "after each wheel tick and its post-tick pause" but code invokes hook after wheel tick and BEFORE the pause (wheel → hook → pause, not wheel → pause → hook).
+
+**Root cause:** Spec intent was "inspect DOM after scroll settles" but implementation chose to fire hook immediately after wheel so pause acts as natural debounce for next tick. The spec wording didn't precisely describe this ordering.
+
+**Fixed:** Updated spec to explicitly document the sequence: "after each wheel tick (and before the tick's post-tick pause), `onTick({...})` is awaited before the pause starts".
+
+**Learning:** For async operations with multiple steps, specs must be precise about order. "After X and Y" is ambiguous — does Y happen before or after callback? Use explicit sequence: "after X (and before Y), callback is awaited before Y starts".

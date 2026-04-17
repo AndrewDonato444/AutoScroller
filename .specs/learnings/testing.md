@@ -260,3 +260,26 @@ const validConfigYaml = `...`;  /* duplicate */
 ```
 
 **Why:** Each test file is self-contained and can be understood in isolation. Extracting shared helpers to a central test-utils file adds coupling and navigation cost. If the helper evolves differently for different test suites, the duplication was the right call.
+
+---
+
+## Spec Precision
+
+### Timing Precision for Async Callbacks in Specs
+
+**Problem:** Spec said callback is awaited "after each wheel tick and its post-tick pause" — ambiguous about whether pause happens before or after callback.
+
+**Impact:** Implementation chose: `wheel → callback → pause`. Spec wording implied: `wheel → pause → callback`. Drift agent flagged this as misalignment.
+
+**Solution:** Be explicit about operation order in Gherkin scenarios:
+
+```markdown
+### Scenario: Tick hook exposes the page after each scroll
+...
+Then after each wheel tick (and before the tick's post-tick pause),
+  `onTick({ page, tickIndex, elapsedMs })` is awaited before the pause starts
+```
+
+**Why:** "After X and Y" is ambiguous when Y is a duration. Does the callback fire after Y completes, or before Y starts? Async operations with multiple steps (action → callback → delay) need explicit sequencing in specs, or implementation will make an arbitrary choice that may not match spec intent.
+
+**When to apply:** Any time a callback fires in a multi-step async flow (network request → callback → retry, scroll → callback → pause, save → callback → cleanup), document the exact sequence. Don't rely on "and" to imply order.
