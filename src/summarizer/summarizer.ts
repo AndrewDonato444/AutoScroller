@@ -23,6 +23,14 @@ export const CLAUDE_TIMEOUT_MS = 60_000;
 export const RETRY_DELAY_MS = 2_000;
 
 /**
+ * Error messages for common failure modes.
+ */
+const ERROR_NO_API_KEY = 'no_api_key: set config.claude.apiKey or ANTHROPIC_API_KEY';
+const ERROR_MALFORMED_RESPONSE = 'malformed_response';
+const ERROR_TIMEOUT = 'timeout';
+const ERROR_RATE_LIMITED = 'rate_limited';
+
+/**
  * Worth clicking item structure.
  */
 export interface WorthClickingItem {
@@ -107,6 +115,71 @@ interface ClaudeToolInput {
 }
 
 /**
+ * Tool schema definition for Claude API.
+ * Extracted as a constant to reduce function complexity.
+ */
+const RETURN_SUMMARY_TOOL: Anthropic.Tool = {
+  name: 'return_summary',
+  description: 'Return the structured summary of the feed',
+  input_schema: {
+    type: 'object',
+    properties: {
+      themes: {
+        type: 'array',
+        items: { type: 'string' },
+        minItems: 3,
+        maxItems: 7,
+        description: 'Short theme labels (not sentences)',
+      },
+      worthClicking: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            postId: { type: 'string' },
+            url: { type: 'string' },
+            author: { type: 'string', description: '@handle format' },
+            why: { type: 'string', description: 'One sentence why this is worth clicking' },
+          },
+          required: ['postId', 'url', 'author', 'why'],
+        },
+        maxItems: 10,
+      },
+      voices: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            handle: { type: 'string', description: '@handle format' },
+            why: { type: 'string', description: 'Why this handle is worth reading' },
+          },
+          required: ['handle', 'why'],
+        },
+        maxItems: 5,
+      },
+      noise: {
+        type: 'object',
+        properties: {
+          count: { type: 'number' },
+          examples: {
+            type: 'array',
+            items: { type: 'string' },
+            maxItems: 3,
+            description: 'Short phrases describing noise patterns',
+          },
+        },
+        required: ['count', 'examples'],
+      },
+      feedVerdict: {
+        type: 'string',
+        enum: ['signal', 'mixed', 'noise'],
+      },
+    },
+    required: ['themes', 'worthClicking', 'voices', 'noise', 'feedVerdict'],
+  },
+};
+
+/**
  * Compact post for Claude payload (strips fields Claude doesn't need).
  */
 interface CompactPost {
@@ -132,11 +205,10 @@ interface CompactPost {
 }
 
 /**
- * Flatten quoted.quoted chains to one level.
- * Returns a compact post with quoted.quoted set to null.
+ * Convert an ExtractedPost to CompactPost format (without handling quoted field).
  */
-function flattenQuotedChains(post: ExtractedPost): CompactPost {
-  const compact: CompactPost = {
+function toCompactPostBase(post: ExtractedPost): Omit<CompactPost, 'quoted'> {
+  return {
     id: post.id,
     url: post.url,
     author: post.author,
@@ -146,23 +218,23 @@ function flattenQuotedChains(post: ExtractedPost): CompactPost {
     media: post.media,
     isRepost: post.isRepost,
     repostedBy: post.repostedBy,
+  };
+}
+
+/**
+ * Flatten quoted.quoted chains to one level.
+ * Returns a compact post with quoted.quoted set to null.
+ */
+function flattenQuotedChains(post: ExtractedPost): CompactPost {
+  return {
+    ...toCompactPostBase(post),
     quoted: post.quoted
       ? {
-          id: post.quoted.id,
-          url: post.quoted.url,
-          author: post.quoted.author,
-          text: post.quoted.text,
-          postedAt: post.quoted.postedAt,
-          metrics: post.quoted.metrics,
-          media: post.quoted.media,
-          isRepost: post.quoted.isRepost,
-          repostedBy: post.quoted.repostedBy,
+          ...toCompactPostBase(post.quoted),
           quoted: null, // Strip nested quote
         }
       : null,
   };
-
-  return compact;
 }
 
 /**
@@ -236,73 +308,12 @@ async function callClaude(
   prompt: string,
   signal: AbortSignal
 ): Promise<{ success: true; data: ClaudeToolInput } | { success: false; reason: string; rawResponse?: string }> {
-  const toolSchema: Anthropic.Tool = {
-    name: 'return_summary',
-    description: 'Return the structured summary of the feed',
-    input_schema: {
-      type: 'object',
-      properties: {
-        themes: {
-          type: 'array',
-          items: { type: 'string' },
-          minItems: 3,
-          maxItems: 7,
-          description: 'Short theme labels (not sentences)',
-        },
-        worthClicking: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              postId: { type: 'string' },
-              url: { type: 'string' },
-              author: { type: 'string', description: '@handle format' },
-              why: { type: 'string', description: 'One sentence why this is worth clicking' },
-            },
-            required: ['postId', 'url', 'author', 'why'],
-          },
-          maxItems: 10,
-        },
-        voices: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              handle: { type: 'string', description: '@handle format' },
-              why: { type: 'string', description: 'Why this handle is worth reading' },
-            },
-            required: ['handle', 'why'],
-          },
-          maxItems: 5,
-        },
-        noise: {
-          type: 'object',
-          properties: {
-            count: { type: 'number' },
-            examples: {
-              type: 'array',
-              items: { type: 'string' },
-              maxItems: 3,
-              description: 'Short phrases describing noise patterns',
-            },
-          },
-          required: ['count', 'examples'],
-        },
-        feedVerdict: {
-          type: 'string',
-          enum: ['signal', 'mixed', 'noise'],
-        },
-      },
-      required: ['themes', 'worthClicking', 'voices', 'noise', 'feedVerdict'],
-    },
-  };
-
   try {
     const response = await client.messages.create(
       {
         model,
         max_tokens: 4096,
-        tools: [toolSchema],
+        tools: [RETURN_SUMMARY_TOOL],
         messages: [{ role: 'user', content: prompt }],
       },
       { signal }
@@ -315,14 +326,14 @@ async function callClaude(
 
     if (!toolUse) {
       const rawResponse = JSON.stringify(response.content);
-      return { success: false, reason: 'malformed_response', rawResponse };
+      return { success: false, reason: ERROR_MALFORMED_RESPONSE, rawResponse };
     }
 
     return { success: true, data: toolUse.input as ClaudeToolInput };
   } catch (error: any) {
     // Handle different error types
     if (error.name === 'AbortError') {
-      return { success: false, reason: 'timeout' };
+      return { success: false, reason: ERROR_TIMEOUT };
     }
 
     if (error.status === 401) {
@@ -334,7 +345,7 @@ async function callClaude(
     }
 
     if (error.status === 429) {
-      return { success: false, reason: 'rate_limited' };
+      return { success: false, reason: ERROR_RATE_LIMITED };
     }
 
     if (error.status && error.status >= 500) {
@@ -363,7 +374,7 @@ async function callClaudeWithRetry(
   }
 
   // Check if error is transient (429, 5xx, or network error)
-  const isTransient = result.reason === 'rate_limited' || result.reason.includes('api_unavailable');
+  const isTransient = result.reason === ERROR_RATE_LIMITED || result.reason.includes('api_unavailable');
 
   if (!isTransient) {
     // Non-transient error (401, 400, malformed_response) - fail immediately
@@ -390,7 +401,7 @@ export async function summarizeRun(input: SummarizerInput): Promise<SummarizerRe
   if (!effectiveApiKey) {
     return {
       status: 'error',
-      reason: 'no_api_key: set config.claude.apiKey or ANTHROPIC_API_KEY',
+      reason: ERROR_NO_API_KEY,
     };
   }
 
