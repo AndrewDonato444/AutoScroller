@@ -13,6 +13,7 @@ import { createVisionFallback, type VisionStats } from '../extract/vision-fallba
 import Anthropic from '@anthropic-ai/sdk';
 import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { spawn, execFile } from 'node:child_process';
 
 export interface ScrollFlags {
   minutes?: number;
@@ -28,6 +29,78 @@ const EXIT_ERROR = 1;
  */
 function formatDisplayPath(path: string): string {
   return path.replace(expandHomeDir('~'), '~');
+}
+
+/**
+ * Ping the CDP endpoint to see if Chrome is alive on it.
+ * Returns true if Chrome is reachable, false otherwise.
+ */
+async function isCdpAlive(cdpEndpoint: string): Promise<boolean> {
+  try {
+    const versionUrl = new URL('/json/version', cdpEndpoint).toString();
+    const res = await fetch(versionUrl, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Launch Chrome in the background with the configured CDP port and profile.
+ * Returns once the CDP port responds, or throws if Chrome never comes up.
+ *
+ * Used by scheduled runs so the operator doesn't have to manually run
+ * `pnpm run chrome` before each scroll.
+ */
+async function ensureChromeRunning(cdpEndpoint: string, userDataDir: string): Promise<void> {
+  if (await isCdpAlive(cdpEndpoint)) {
+    return;
+  }
+
+  const port = new URL(cdpEndpoint).port || '9222';
+  const profile = expandHomeDir(userDataDir);
+  const chromeApp = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
+  console.log(`chrome not running on port ${port} — launching in background...`);
+
+  // Detached + unref'd so Chrome keeps running after scroll exits.
+  // stdio ignored so Chrome's chatty stderr doesn't leak into our output.
+  const child = spawn(chromeApp, [
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${profile}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-features=PrivacySandboxSettings4',
+  ], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  // Poll the CDP port until it responds (max ~15s)
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (await isCdpAlive(cdpEndpoint)) {
+      console.log(`chrome ready on port ${port}`);
+      return;
+    }
+  }
+
+  throw new Error(`chrome failed to start on port ${port} within 15s`);
+}
+
+/**
+ * Fire a macOS desktop notification. Best-effort — silently no-ops if
+ * osascript isn't available (non-macOS) or the call fails.
+ */
+function notify(title: string, body: string): void {
+  const script = `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`;
+  execFile('osascript', ['-e', script], () => {
+    // Fire and forget. Errors don't matter.
+  });
 }
 
 /**
@@ -440,6 +513,19 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     : `launched own context at ${resolvedUserDataDir}`;
   console.log(`scrolling x.com for ${effectiveMinutes}m (${browserMode})`);
 
+  // If we're configured for CDP attach, make sure Chrome is actually running
+  // on that port. If not, launch it in the background. This is what lets
+  // scheduled runs work without the operator opening a terminal first.
+  if (config.browser.cdpEndpoint) {
+    try {
+      await ensureChromeRunning(config.browser.cdpEndpoint, config.browser.userDataDir);
+    } catch (error: any) {
+      console.error(`failed to start chrome: ${error.message}`);
+      notify('ScrollProxy: Chrome unavailable', `Could not launch Chrome on ${config.browser.cdpEndpoint}`);
+      process.exit(EXIT_ERROR);
+    }
+  }
+
   // Create extractor instance
   const extractor = createExtractor();
 
@@ -462,7 +548,11 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
   // Handle result
   if (result.status === 'session_expired') {
-    console.log('session expired — run pnpm login to refresh, then pnpm scroll');
+    console.log('session expired — run `pnpm run chrome` and log back into X');
+    notify(
+      'ScrollProxy: re-auth needed',
+      'X session expired. Run `pnpm run chrome` and log back in to resume scheduled scrolls.',
+    );
     process.exit(EXIT_ERROR);
   }
 
@@ -477,44 +567,77 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   const adsSkipped = stats.adsSkipped;
   const elapsedSec = Math.round(result.elapsedMs / 1000);
 
-  // Handle browser_closed - write what we collected
-  if (result.status === 'browser_closed') {
+  // Handle browser_closed - write what we have and still try to summarize.
+  // If Chrome crashed mid-scroll (hang watchdog, OOM, etc.) we likely still
+  // have a useful pile of posts. Bailing without summarizing wastes them.
+  if (result.status === 'browser_closed' && !isDryRun) {
+    const posts = extractor.getPosts();
+    const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
     let summaryLine = `scroll ended early after ${result.tickCount} ticks (browser closed)`;
 
-    if (!isDryRun) {
-      try {
-        const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
-        const posts = extractor.getPosts();
-
-        const { summaryFragment } = await writeRawJsonAndUpdateCache({
-          outputDir: config.output.dir,
-          stateDir: config.output.state,
-          runId,
-          posts,
-          stats,
-          meta: {
-            startedAt: startedAt.toISOString(),
-            endedAt: endedAt.toISOString(),
-            elapsedMs: result.elapsedMs,
-            tickCount: result.tickCount,
-            minutes: effectiveMinutes,
-            dryRun: isDryRun,
-          },
-        });
-
-        summaryLine += summaryFragment;
-      } catch (error: any) {
-        // Handle both write failures and cache failures
-        if (error.message.includes('dedup cache')) {
-          console.log(summaryLine);
-          console.log(`dedup cache failed: ${error.message} (next run will re-count some posts as new)`);
-          process.exit(EXIT_ERROR);
-        }
-        summaryLine += ` — write failed: ${error.message}`;
-      }
+    if (posts.length === 0) {
+      // Nothing to summarize — bail.
+      console.log(summaryLine);
+      process.exit(EXIT_ERROR);
     }
 
-    console.log(summaryLine);
+    // Write raw.json + update dedup cache. On cache failure we still have raw.
+    let newPosts: ExtractedPost[];
+    let writeResult: Awaited<ReturnType<typeof writeRawJson>>;
+    try {
+      const writeAndCacheResult = await writeRawJsonAndUpdateCache({
+        outputDir: config.output.dir,
+        stateDir: config.output.state,
+        runId,
+        posts,
+        stats,
+        meta: {
+          startedAt: startedAt.toISOString(),
+          endedAt: endedAt.toISOString(),
+          elapsedMs: result.elapsedMs,
+          tickCount: result.tickCount,
+          minutes: effectiveMinutes,
+          dryRun: isDryRun,
+        },
+      });
+      newPosts = writeAndCacheResult.newPosts;
+      writeResult = writeAndCacheResult.writeResult;
+      summaryLine += writeAndCacheResult.summaryFragment;
+    } catch (error: any) {
+      console.log(summaryLine);
+      console.log(`write failed: ${error.message}`);
+      process.exit(EXIT_ERROR);
+    }
+
+    // Try to summarize the partial data. Chrome being dead doesn't affect Claude.
+    try {
+      const sumResult = await runSummarizerAndWriters({
+        posts,
+        newPosts,
+        config,
+        runId,
+        runDir: writeResult.runDir,
+        rawJsonPath: writeResult.rawJsonPath,
+        endedAt,
+        summaryLine,
+        visionStats: undefined,
+      });
+      console.log(sumResult.summaryLine);
+      sumResult.errorDetails.forEach((d) => console.log(d));
+      await cleanupScreenshots(screenshotDir);
+      // Treat as success even though scroll was cut short — we produced output.
+      process.exit(sumResult.success ? EXIT_SUCCESS : EXIT_ERROR);
+    } catch (summarizerError: any) {
+      await cleanupScreenshots(screenshotDir);
+      console.log(summaryLine);
+      console.log(`summarizer error: ${summarizerError.message}`);
+      process.exit(EXIT_ERROR);
+    }
+  }
+
+  // Dry-run that hit browser_closed — report and bail.
+  if (result.status === 'browser_closed' && isDryRun) {
+    console.log(`scroll ended early after ${result.tickCount} ticks (browser closed, dry-run)`);
     process.exit(EXIT_ERROR);
   }
 

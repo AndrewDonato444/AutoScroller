@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.scrollproxy.scheduled-scroll</string>
+
+  <!-- WorkingDirectory, ProgramArguments, env are filled in by install-schedule.sh -->
+  <key>WorkingDirectory</key>
+  <string>__PROJECT_DIR__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PROJECT_DIR__/scripts/scheduled-run.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+
+  <!-- Run every 6 hours (21600 seconds) -->
+  <key>StartInterval</key>
+  <integer>21600</integer>
+
+  <!-- Also run ~2 min after load so first scroll happens quickly -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Logs (rotated by macOS, append-only) -->
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/scrollproxy.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/scrollproxy.log</string>
+
+  <!-- Don't queue up missed runs while the mac was asleep; just run the next scheduled one. -->
+  <key>StartCalendarIntervalEnabled</key>
+  <false/>
+</dict>
+</plist>
