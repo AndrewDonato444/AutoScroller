@@ -277,4 +277,56 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound after implementation -->
+### TypeScript Type Safety
+
+**Union type handling before parseInt:** When parseArgs returns `string | boolean` for flag values, added an explicit type guard before calling parseInt to ensure TypeScript can verify type safety at compile time:
+
+```typescript
+export function parseMinutesFlag(value: string | boolean | undefined): number | undefined {
+  if (value === undefined || value === true) {
+    return undefined;
+  }
+  
+  if (typeof value !== 'string') {
+    throw new Error('--minutes must be an integer between 1 and 120');
+  }
+  
+  const num = parseInt(value, 10);  // TypeScript now knows value is string
+  // ...
+}
+```
+
+**Why:** Relying on parseInt's implicit string coercion would work at runtime but violates TypeScript's compile-time safety guarantees. The type guard makes the safety explicit.
+
+### CLI Stub Alignment
+
+**Output message wording matters for test assertions:** The scroll handler stub initially printed "handler not yet wired" but the spec's Gherkin scenario and CLI mockup said "feed not yet wired". Changed to "feed not yet wired" to maintain backward compatibility with feature 1's tests.
+
+**Why:** Stub messages should align with the spec's vocabulary and user-facing mockups, not generic placeholder text. "Feed" is operator vocabulary; "handler" is developer vocabulary.
+
+**Hardcoded version strings in stubs are intentional:** The scroll.ts stub prints `scrollproxy v0.0.1` instead of reading from package.json. This will stay until features 4-7 replace the stubs with real implementations that need version banners.
+
+**Why:** Extracting the version read logic for a 5-line placeholder that will be deleted soon adds indirection for no benefit. Three similar lines of code is better than a premature abstraction.
+
+### Refactoring Wins
+
+**Extract constants for exit codes and validation bounds:** Replaced magic numbers (0, 1, 2, 1, 120) with named constants (EXIT_SUCCESS, EXIT_ERROR, EXIT_USAGE_ERROR, MIN_SCROLL_MINUTES, MAX_SCROLL_MINUTES). Made error messages dynamic:
+
+```typescript
+const MIN_SCROLL_MINUTES = 1;
+const MAX_SCROLL_MINUTES = 120;
+
+throw new Error(`--minutes must be an integer between ${MIN_SCROLL_MINUTES} and ${MAX_SCROLL_MINUTES}`);
+```
+
+**Why:** Self-documenting code. When bounds change, error messages update automatically. Exit code constants make Unix convention explicit.
+
+**Extract helpers to eliminate duplication:** All three command handlers (scroll, login, replay) had identical try/catch blocks for flag validation and config loading. Extracted `validateFlagsOrExit()` and `loadConfigFromFlags()` helpers, reducing ~25 lines per handler to ~10 lines.
+
+**Why:** DRY. The validation and loading logic is identical; only the allowed flags differ. Net result: 13 fewer lines, improved maintainability, all 52 tests still pass.
+
+### Spec Maintenance
+
+**Verb-injection entry shims created during scaffolding:** The src/login.ts and src/replay.ts files exist to support `pnpm login` and `pnpm replay` routing via package.json scripts. They weren't initially listed in the spec's Source File list because they were added after the spec was written.
+
+**Why:** Spec frontmatter must list all entry points, not just the "main" implementation files. These shims are part of the feature's public surface (they enable the pnpm script routing) and must be tracked for drift detection.

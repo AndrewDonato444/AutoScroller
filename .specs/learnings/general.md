@@ -6,6 +6,29 @@ Patterns that don't fit other categories.
 
 ## Code Style
 
+### Type Guards for Union Types Before Type-Specific Operations
+
+When a value has a union type like `string | boolean`, add an explicit type guard before operations that require a specific type:
+
+```typescript
+// parseArgs returns flags as Record<string, string | boolean>
+export function parseMinutesFlag(value: string | boolean | undefined): number | undefined {
+  if (value === undefined || value === true) {
+    return undefined;
+  }
+  
+  // Type guard: ensure value is string before calling parseInt
+  if (typeof value !== 'string') {
+    throw new Error('--minutes must be an integer between 1 and 120');
+  }
+  
+  const num = parseInt(value, 10);  // TypeScript now knows value is string
+  // ...
+}
+```
+
+**Why:** While parseInt coerces non-strings at runtime, TypeScript strict mode requires compile-time proof of type safety. The type guard makes the contract explicit: "this operation requires a string, here's where we verify it". Relying on implicit coercion violates TypeScript's safety guarantees.
+
 ### TypeScript Interface for JSON.parse
 
 Create explicit interfaces with name/version types to eliminate implicit `any` from JSON.parse:
@@ -22,16 +45,27 @@ console.log(`${packageJson.name} v${packageJson.version}`);
 
 **Why:** Eliminates implicit `any` warnings from strict mode and gives autocomplete/type safety for the parsed data.
 
-### Named Constants for Magic Strings
+### Named Constants for Magic Strings and Numbers
 
-Extract repeated strings to named constants:
+Extract repeated strings and magic numbers to named constants:
 
 ```typescript
+// Strings
 const STATUS_MESSAGE = 'feed not yet wired';
 console.log(`${packageJson.name} v${packageJson.version} — ${STATUS_MESSAGE}`);
+
+// Numbers
+const EXIT_SUCCESS = 0;
+const EXIT_ERROR = 1;
+const EXIT_USAGE_ERROR = 2;
+const MIN_SCROLL_MINUTES = 1;
+const MAX_SCROLL_MINUTES = 120;
+
+throw new Error(`--minutes must be an integer between ${MIN_SCROLL_MINUTES} and ${MAX_SCROLL_MINUTES}`);
+process.exit(EXIT_USAGE_ERROR);
 ```
 
-**Why:** Self-documenting code. The constant name explains what the string means, and changes only need to happen in one place.
+**Why:** Self-documenting code. The constant name explains what the value means (EXIT_USAGE_ERROR makes Unix convention explicit, MIN_SCROLL_MINUTES shows intent). Changes only need to happen in one place, and error messages update automatically.
 
 ### DRY with package.json
 
@@ -63,6 +97,19 @@ Package scripts should be verbs the operator types (scroll, login, replay) not n
 ```
 
 **Why:** Matches operator vocabulary. "I want to scroll the feed" → `pnpm scroll`. Nouns sound like services/daemons, not one-shot commands.
+
+### Underscore Prefix for Intentionally Unused Parameters
+
+Use underscore prefix for parameters that must exist for function signature but aren't used yet:
+
+```typescript
+// Login handler stub - config required by signature but not used yet
+export async function handleLogin(_config: Config): Promise<void> {
+  console.log('scrollproxy login — not yet wired (feature 4)');
+}
+```
+
+**Why:** Maintains function signature contract while avoiding linter warnings. The underscore makes the intent explicit: "this parameter is required by the interface but not used in this implementation (yet)". Common for stub functions that will be filled in later.
 
 ---
 
@@ -225,3 +272,25 @@ console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
 - Standard values (`utf-8` encoding literal)
 
 **Why:** Extraction has a cost (indirection, naming, navigation). Only extract when the clarity or reuse benefit outweighs that cost. A 20-line decision tree that reads like prose doesn't need extraction.
+
+---
+
+## Spec Maintenance
+
+### Spec Frontmatter Must List All Entry Points
+
+When a feature has multiple entry files (main implementation + shims for routing), all must be listed in the spec's Source File frontmatter:
+
+```markdown
+---
+feature: CLI Entry + Arg Parsing
+domain: foundation
+source: src/cli/index.ts
+---
+
+# CLI Entry + Arg Parsing
+
+**Source File**: `src/cli/index.ts`, `src/cli/args.ts`, `src/cli/scroll.ts`, `src/cli/login.ts`, `src/cli/replay.ts`, `src/index.ts`, `src/login.ts`, `src/replay.ts`
+```
+
+**Why:** Entry shims (like src/login.ts that routes pnpm login → src/cli/login.ts) are part of the feature's public surface. They may be added during scaffolding after the spec is written. Drift detection needs the complete list to verify alignment. If a file is invoked by package.json scripts or imported by the user, it's an entry point.

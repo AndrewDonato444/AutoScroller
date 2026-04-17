@@ -19,6 +19,22 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-16: CLI Entry + Arg Parsing
+
+**TypeScript:**
+- Type guards for union types before type-specific operations (e.g., `typeof value !== 'string'` before parseInt)
+- Explicit type narrowing is better than relying on implicit coercion
+
+**Code Style:**
+- Named constants for magic numbers (exit codes, validation bounds) — self-documenting and error messages update automatically
+- Underscore prefix for unused parameters in stub functions (_config) — maintains signature contract
+- Extract helpers when logic is duplicated 3+ times (validateFlagsOrExit, loadConfigFromFlags)
+
+**Spec Maintenance:**
+- Spec frontmatter must list ALL entry points, including routing shims (src/login.ts, src/replay.ts)
+- CLI stub messages must match spec vocabulary ("feed not yet wired" not "handler not yet wired")
+- Hardcoded values in stubs that will be replaced soon are OK — don't extract prematurely
+
 ### 2026-04-16: Config Loader
 
 **Testing:**
