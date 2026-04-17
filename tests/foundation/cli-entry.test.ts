@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -9,6 +9,11 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '../..');
+
+// Exit codes (matching src/cli/index.ts)
+const EXIT_SUCCESS = 0;
+const EXIT_ERROR = 1;
+const EXIT_USAGE_ERROR = 2;
 
 let testTmpDir: string;
 let testHomeDir: string;
@@ -50,6 +55,54 @@ function runCli(args: string[], options: { configPath?: string } = {}): Promise<
       resolve({ stdout, stderr, exitCode });
     });
   });
+}
+
+/**
+ * Helper to create a minimal valid raw.json payload
+ */
+function createMinimalRawJson(runId: string) {
+  return {
+    schemaVersion: 1,
+    runId,
+    posts: [
+      {
+        id: 'post-1',
+        url: 'https://x.com/test/status/1',
+        author: {
+          handle: '@testuser',
+          displayName: 'Test User',
+          verified: false,
+        },
+        text: 'Test post 1',
+        postedAt: '2026-04-16T08:30:00.000Z',
+        tickIndex: 0,
+        metrics: { replies: 0, reposts: 0, likes: 0, views: null },
+        media: [],
+        isRepost: false,
+        repostedBy: null,
+        quoted: null,
+      },
+    ],
+  };
+}
+
+/**
+ * Helper to set up a test run directory with raw.json
+ */
+function setupTestRunDirectory(runId: string, runsDir?: string): string {
+  const actualRunsDir = runsDir ?? join(testHomeDir, 'scrollproxy', 'runs');
+  const runDir = join(actualRunsDir, runId);
+  mkdirSync(runDir, { recursive: true });
+
+  // Create state directory for themes store
+  const stateDir = join(testHomeDir, 'scrollproxy', 'state');
+  mkdirSync(stateDir, { recursive: true });
+
+  // Create raw.json
+  const rawJson = createMinimalRawJson(runId);
+  writeFileSync(join(runDir, 'raw.json'), JSON.stringify(rawJson, null, 2), 'utf-8');
+
+  return runDir;
 }
 
 beforeEach(() => {
@@ -111,7 +164,7 @@ claude:
       expect(result.stdout).toContain('scrolling x.com for');
       expect(result.stdout).toContain('persistent context:');
       // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(EXIT_ERROR);
       expect(result.stderr).toContain('no Chromium profile found');
     });
   });
@@ -126,7 +179,7 @@ claude:
       // Should print startup message with overridden minutes value
       expect(result.stdout).toContain('scrolling x.com for 3m');
       // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(EXIT_ERROR);
       expect(result.stderr).toContain('no Chromium profile found');
     });
 
@@ -151,7 +204,7 @@ claude:
     it('should reject non-integer values', async () => {
       const result = await runCli(['scroll', '--minutes', 'abc']);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toContain('--minutes');
       expect(result.stderr).toMatch(/integer.*1.*120/i);
     });
@@ -159,7 +212,7 @@ claude:
     it('should reject value 0', async () => {
       const result = await runCli(['scroll', '--minutes', '0']);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toContain('--minutes');
       expect(result.stderr).toMatch(/integer.*1.*120/i);
     });
@@ -167,7 +220,7 @@ claude:
     it('should reject value > 120', async () => {
       const result = await runCli(['scroll', '--minutes', '9999']);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toContain('--minutes');
       expect(result.stderr).toMatch(/integer.*1.*120/i);
     });
@@ -183,7 +236,7 @@ claude:
       // Should print startup message
       expect(result.stdout).toContain('scrolling x.com for');
       // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(EXIT_ERROR);
       expect(result.stderr).toContain('no Chromium profile found');
     });
   });
@@ -204,7 +257,7 @@ claude:
       // Should use custom config with minutes: 2
       expect(result.stdout).toContain('scrolling x.com for 2m');
       // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(EXIT_ERROR);
       expect(result.stderr).toContain('no Chromium profile found');
     });
   });
@@ -216,7 +269,7 @@ claude:
 
       const result = await runCli(['scroll', '--telemetry']);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toContain('--telemetry');
       expect(result.stderr).toMatch(/unknown flag/i);
       expect(result.stderr).toMatch(/--help/);
@@ -230,7 +283,7 @@ claude:
 
       const result = await runCli(['foo']);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toContain('foo');
       expect(result.stderr).toMatch(/unknown command/i);
       expect(result.stderr).toMatch(/scroll.*login.*replay/i);
@@ -241,7 +294,7 @@ claude:
     it('should print usage when --help flag is provided', async () => {
       const result = await runCli(['scroll', '--help']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toContain('usage');
       expect(result.stdout).toContain('scroll');
       expect(result.stdout).toContain('login');
@@ -255,7 +308,7 @@ claude:
     it('should accept -h as shorthand', async () => {
       const result = await runCli(['scroll', '-h']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toContain('usage');
     });
   });
@@ -264,14 +317,14 @@ claude:
     it('should print version when --version flag is provided', async () => {
       const result = await runCli(['scroll', '--version']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toMatch(/scrollproxy v\d+\.\d+\.\d+/);
     });
 
     it('should accept -v as shorthand', async () => {
       const result = await runCli(['scroll', '-v']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toMatch(/scrollproxy v\d+\.\d+\.\d+/);
     });
   });
@@ -298,45 +351,13 @@ claude:
       writeFileSync(configPath, validConfigYaml, 'utf-8');
 
       // Create run directory with raw.json
-      const runsDir = join(testHomeDir, 'scrollproxy', 'runs');
-      const runDir = join(runsDir, '2026-04-16-0830');
-      mkdirSync(runDir, { recursive: true });
-
-      // Create state directory for themes store
-      const stateDir = join(testHomeDir, 'scrollproxy', 'state');
-      mkdirSync(stateDir, { recursive: true });
-
-      // Create a minimal valid raw.json
-      const rawJson = {
-        schemaVersion: 1,
-        runId: '2026-04-16-0830',
-        posts: [
-          {
-            id: 'post-1',
-            url: 'https://x.com/test/status/1',
-            author: {
-              handle: '@testuser',
-              displayName: 'Test User',
-              verified: false,
-            },
-            text: 'Test post 1',
-            postedAt: '2026-04-16T08:30:00.000Z',
-            tickIndex: 0,
-            metrics: { replies: 0, reposts: 0, likes: 0, views: null },
-            media: [],
-            isRepost: false,
-            repostedBy: null,
-            quoted: null,
-          },
-        ],
-      };
-      writeFileSync(join(runDir, 'raw.json'), JSON.stringify(rawJson, null, 2), 'utf-8');
+      setupTestRunDirectory('2026-04-16-0830');
 
       // Since replay calls the real summarizer, we need to run in dry-run mode
       // to avoid making actual API calls in this routing test
       const result = await runCli(['replay', '2026-04-16-0830', '--dry-run']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toContain('replay');
       expect(result.stdout).toContain('2026-04-16-0830');
       expect(result.stdout).toContain('dry-run');
@@ -347,7 +368,7 @@ claude:
     it('should reject replay command without run-id', async () => {
       const result = await runCli(['replay']);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toMatch(/replay requires.*run-id/i);
       expect(result.stderr).toContain('pnpm replay <run-id>');
     });
@@ -385,39 +406,12 @@ claude:
       writeFileSync(customConfigPath, customConfig, 'utf-8');
 
       // Create run directory with raw.json in the alt-runs location
-      const runDir = join(altRunsDir, '2026-04-16-0830');
-      mkdirSync(runDir, { recursive: true });
-
-      // Create a minimal valid raw.json
-      const rawJson = {
-        schemaVersion: 1,
-        runId: '2026-04-16-0830',
-        posts: [
-          {
-            id: 'post-1',
-            url: 'https://x.com/test/status/1',
-            author: {
-              handle: '@testuser',
-              displayName: 'Test User',
-              verified: false,
-            },
-            text: 'Test post 1',
-            postedAt: '2026-04-16T08:30:00.000Z',
-            tickIndex: 0,
-            metrics: { replies: 0, reposts: 0, likes: 0, views: null },
-            media: [],
-            isRepost: false,
-            repostedBy: null,
-            quoted: null,
-          },
-        ],
-      };
-      writeFileSync(join(runDir, 'raw.json'), JSON.stringify(rawJson, null, 2), 'utf-8');
+      setupTestRunDirectory('2026-04-16-0830', altRunsDir);
 
       // Test with dry-run to avoid API calls
       const result = await runCli(['replay', '2026-04-16-0830', '--config', customConfigPath, '--dry-run']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toContain('2026-04-16-0830');
       // Should use the custom config (dry-run confirms it loaded the config successfully)
       expect(result.stdout).toContain('dry-run');
