@@ -5,6 +5,7 @@ import { writeRawJson, generateRunId } from '../writer/raw-json.js';
 import { loadDedupCache, saveDedupCache, partitionPosts, appendHashes } from '../state/dedup-cache.js';
 import { summarizeRun, type SummarizerInput } from '../summarizer/summarizer.js';
 import { loadThemesStore, saveThemesStore, appendRun, recentThemes } from '../state/rolling-themes.js';
+import { writeSummaryMarkdown } from '../writer/markdown.js';
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -249,6 +250,7 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
         if (summarizerResult.status === 'ok') {
           // Write summary.json
+          const summaryJsonPath = join(writeResult.runDir, 'summary.json');
           await writeSummaryJson(writeResult.runDir, summarizerResult.summary);
 
           // Update themes store
@@ -264,8 +266,28 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
           const worthClickingCount = summarizerResult.summary.worthClicking.length;
           summaryLine = summaryLine.replace(/ — saved to .*$/, ` — summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — saved to ${formatDisplayPath(writeResult.rawJsonPath)}`);
 
-          console.log(summaryLine);
-          process.exit(EXIT_SUCCESS);
+          // Write markdown summary
+          try {
+            const mdResult = await writeSummaryMarkdown({
+              runDir: writeResult.runDir,
+              summary: summarizerResult.summary,
+              rawJsonPath: writeResult.rawJsonPath,
+              summaryJsonPath,
+              displayRawJsonPath: formatDisplayPath(writeResult.rawJsonPath),
+              displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
+            });
+
+            // Append markdown path to summary line
+            summaryLine += ` — rendered to ${formatDisplayPath(mdResult.summaryMdPath)}`;
+
+            console.log(summaryLine);
+            process.exit(EXIT_SUCCESS);
+          } catch (mdError: any) {
+            // Markdown render failed - summary.json and raw.json stay intact
+            console.log(summaryLine);
+            console.log(`markdown render failed: ${mdError.message}`);
+            process.exit(EXIT_ERROR);
+          }
         } else {
           // Summarizer failed - write error file
           await writeSummaryErrorJson(
