@@ -11,7 +11,7 @@ personas:
   - anti-persona
 status: implemented
 created: 2026-04-16
-updated: 2026-04-16
+updated: 2026-04-17
 ---
 
 # State Module (Dedup Cache)
@@ -182,7 +182,7 @@ Then the top-level keys, in order, are: `schemaVersion`, `hashes`
 And `schemaVersion` is the literal number `1`
 And `hashes` is a JSON array of strings, each exactly 16 hex characters long
 And no other keys appear in the file — no `createdAt`, no `lastRunId`, no `hostname`, no operator metadata
-And `JSON.stringify(payload, null, 2)` is used — 2-space indentation, UTF-8, trailing newline
+And `JSON.stringify(payload, null, 2)` is used — 2-space indentation, UTF-8
 (Locking the shape keeps the file self-describing and grep-friendly. Any additional field is a future-proofing temptation that invites anti-persona features — "track who posted what, when, and across how many runs" is a surveillance model ScrollProxy explicitly rejects.)
 
 ### Scenario: State file contains no secrets and no post content
