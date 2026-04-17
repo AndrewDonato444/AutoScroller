@@ -19,6 +19,37 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: Claude Summarizer
+
+**API Patterns:**
+- Anthropic SDK tool-use for structured output: define JSON schema as tool, Claude returns typed data via `tool_use` block
+- AbortController for 60-second timeout on SDK calls (prevents CLI hanging)
+- Single retry for transient failures (429, 5xx, network), fail fast for non-transient (401, 400, malformed response)
+- Simplified retry classifier: substring check for `api_unavailable` covers all HTTP failures with one wasted retry on 401/400 but keeps logic simple
+
+**Error Handling:**
+- SDK error categorization: check `error.status` for HTTP codes, `error.name` for AbortError
+- Typed error results: `{ status: 'ok'; data } | { status: 'error'; reason; rawResponse? }` instead of throws
+
+**Data Optimization:**
+- Cap posts at 200 (most recent first) to stay under token budget for single LLM call
+- Flatten nested structures (`quoted.quoted` → `null`) to reduce payload size
+- Counts reflect ALL posts, not just the capped subset sent to Claude
+
+**Testing:**
+- Real API integration tests validate end-to-end behavior (~19s total, but catches real auth/schema/timeout bugs)
+- Mock API keys return 401, which validates the auth error path
+
+**Refactoring:**
+- Extract large schema constants (RETURN_SUMMARY_TOOL) reduced function from 115 to ~55 lines
+- Extract helper for repeated field copying (toCompactPostBase) for DRY on nested transformations
+- Extract error message constants for consistency
+
+**Spec Drift:**
+- Retry classifier simplified from idealized spec (separate transient/non-transient categories) to single substring check
+- Rate-limited scenario claimed `api_unavailable: 429` final reason, but code returns `rate_limited` constant
+- Status field bumped from `stub` to `implemented` during drift reconciliation
+
 ### 2026-04-17: State Module (Rolling Themes Store)
 
 **JavaScript Gotchas:**

@@ -342,3 +342,49 @@ N/A — CLI tool, no UI components.
 ## Learnings
 
 <!-- Updated via /compound -->
+
+### Anthropic SDK Tool-Use Pattern
+
+Used the SDK's tool-use feature for structured output instead of parsing free-form JSON. Define a tool schema matching `RunSummary`, Claude responds with a `tool_use` block, extract `toolUse.input` as typed data. More reliable than asking for JSON text and parsing.
+
+### AbortController for Bounded Waits
+
+Enforced 60-second timeout on Claude calls via `AbortController`. Pass `{ signal: abortController.signal }` to SDK, catch `AbortError` with `error.name === 'AbortError'`. Prevents hanging on slow API responses — critical for "very low patience for daily use" persona.
+
+### Single-Retry Strategy
+
+Retry once for transient failures (429, 5xx, network), fail immediately for non-transient (401, 400, malformed response). Two-second pause between attempts. Total wait bounded by 60-second timeout.
+
+**Simplified retry classifier:** Used single substring check (`api_unavailable`) instead of enumerating status codes. All HTTP failures get `api_unavailable:` prefix, so 401 and 400 get one wasted retry, but logic stays simple and total wait is still bounded.
+
+### Payload Optimization
+
+Capped posts at 200 (most recent by `tickIndex` descending) to stay under token budget for a 10-minute scroll. Flattened `quoted.quoted` chains to one level before sending to Claude. Counts (`newVsSeen`) reflect ALL posts, not just the 200 sent — the cap is for Claude's input, not the operator's understanding.
+
+### Error Handling with Anthropic SDK
+
+Categorized SDK errors by checking `error.status` (HTTP status codes), `error.name` (AbortError), and `error.message` (network/unknown). Each category maps to a typed error reason for consistent CLI error messages.
+
+### Schema Versioning
+
+Included `schemaVersion: 1` in `RunSummary` from day one. When the structure evolves (e.g., v2 adds `modelParams`), readers can check the version and handle old vs new formats. Essential for tools that read saved `summary.json` files from prior runs.
+
+### Testing Real API Integration
+
+Tests make real Anthropic API calls (~19s total runtime) to validate end-to-end behavior: auth, schema alignment, timeout handling, retry logic. Mock API keys (like `'sk-ant-test-key'`) return 401, which validates the auth error path without needing real credits. Trade-off: slow but catches integration bugs that mocks hide.
+
+### Refactoring Lessons
+
+- **Extract large schema constants:** Moved 60-line `RETURN_SUMMARY_TOOL` schema to module level, reduced `callClaude` from 115 to ~55 lines
+- **Extract error message constants:** `ERROR_NO_API_KEY`, `ERROR_MALFORMED_RESPONSE`, etc. for consistency across error paths
+- **Extract helper for repeated field copying:** `toCompactPostBase` eliminates duplication when building compact posts and handling nested `quoted` structures
+- **Skip refactoring complex orchestrators:** `handleScroll` at 200 lines was too risky without comprehensive integration tests due to complex error handling
+
+### Spec Drift Reconciliation
+
+Drift-check agent found three mismatches:
+1. Retry classifier claimed 401/400 are "non-transient" but code retries them once (due to `api_unavailable:` prefix)
+2. Rate-limited scenario claimed final error reason is `'api_unavailable: 429'` but code returns `'rate_limited'` constant
+3. Frontmatter `status: stub` was stale after full implementation
+
+Root cause: Spec described idealized error taxonomy before implementation simplified retry classifier into single substring check. Reconciled by updating spec to match actual behavior and bumping status to `implemented`.

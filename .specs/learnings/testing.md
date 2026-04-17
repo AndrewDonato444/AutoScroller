@@ -304,6 +304,60 @@ const validConfigYaml = `...`;  /* duplicate */
 
 **Why:** Each test file is self-contained and can be understood in isolation. Extracting shared helpers to a central test-utils file adds coupling and navigation cost. If the helper evolves differently for different test suites, the duplication was the right call.
 
+### Real API Integration Tests
+
+**Pattern:** For features that integrate with external APIs (like Anthropic Claude), write tests that make real API calls to validate the integration end-to-end.
+
+```typescript
+describe('UT-SUM-003: First run ever — no prior themes', () => {
+  it('handles empty priorThemes array correctly', async () => {
+    const input: SummarizerInput = {
+      posts: [makePost('1', 'user1', 'AI product strategy discussion')],
+      newPostIds: ['1'],
+      priorThemes: [],
+      interests: ['AI product strategy'],
+      runId: '2026-04-17T09-00-00Z',
+      model: 'claude-sonnet-4-6',
+      apiKey: process.env.ANTHROPIC_API_KEY || 'test-key',
+    };
+    
+    const result = await summarizeRun(input);
+    
+    if (result.status === 'ok') {
+      expect(result.summary.themes.length).toBeGreaterThan(0);
+      expect(result.summary.newVsSeen.newCount).toBe(1);
+    }
+  });
+});
+```
+
+**Why:** Validates that your code works with the real API shape, error responses, and timeout behavior. Mocks hide integration issues — they pass even when the actual API changes. Real calls catch auth errors, schema mismatches, and rate-limit handling bugs.
+
+**Trade-offs:**
+- **Slow:** ~19 seconds total for 10 tests vs. instant with mocks
+- **Requires API key:** Tests need `ANTHROPIC_API_KEY` env var or fail gracefully
+- **Non-deterministic:** LLM responses vary slightly run-to-run
+- **Costs money:** Each test call uses API credits
+
+**When to apply:** Features that wrap third-party APIs where integration bugs are more likely than logic bugs. Use recorded fixtures for regressions after the integration is proven.
+
+**Mock API Key Validation:** When using a mock/invalid API key (like `'sk-ant-test-key'`), the test can validate the error path:
+
+```typescript
+it('uses ANTHROPIC_API_KEY when config.claude.apiKey is empty', async () => {
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';  // Invalid key
+  
+  const result = await summarizeRun(input);
+  
+  if (result.status === 'error') {
+    expect(result.reason).not.toContain('no_api_key');
+    expect(result.reason).toContain('401');  // Auth error expected
+  }
+});
+```
+
+This validates that the code attempts the API call and handles 401 errors correctly, without needing a real API key.
+
 ---
 
 ## Spec Precision

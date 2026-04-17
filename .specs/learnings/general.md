@@ -524,6 +524,114 @@ summaryLine += await updateDedupCacheAndGetSummary(posts, config.output.state, w
 
 **When to apply:** Multi-step orchestration (3+ operations) that appears in 2+ code paths. If the steps must stay synchronized, extract even at 2 occurrences (don't wait for 3+).
 
+### Extract Large Data Structures to Constants
+
+When a function contains large inline data structures (like JSON schemas), extract them to module-level constants:
+
+```typescript
+// BAD: 60-line schema inline in function
+async function callClaude(client, model, prompt) {
+  const response = await client.messages.create({
+    model,
+    max_tokens: 4096,
+    tools: [{
+      name: 'return_summary',
+      description: 'Return the structured summary',
+      input_schema: {
+        type: 'object',
+        properties: {
+          themes: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 7 },
+          worthClicking: { /* ... 40 more lines ... */ },
+          // ...
+        },
+      },
+    }],
+    messages: [{ role: 'user', content: prompt }],
+  });
+}
+
+// GOOD: Extract schema constant
+const RETURN_SUMMARY_TOOL: Anthropic.Tool = {
+  name: 'return_summary',
+  description: 'Return the structured summary of the feed',
+  input_schema: {
+    type: 'object',
+    properties: {
+      themes: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 7 },
+      worthClicking: { /* ... full schema ... */ },
+      // ...
+    },
+    required: ['themes', 'worthClicking', 'voices', 'noise', 'feedVerdict'],
+  },
+};
+
+async function callClaude(client, model, prompt) {
+  const response = await client.messages.create({
+    model,
+    max_tokens: 4096,
+    tools: [RETURN_SUMMARY_TOOL],  // Clean!
+    messages: [{ role: 'user', content: prompt }],
+  });
+}
+```
+
+**Impact:** Reduced `callClaude` from 115 to ~55 lines. The schema is now reusable, testable in isolation, and doesn't obscure the function's control flow.
+
+**When to apply:** Any inline data structure > 20 lines (especially schemas, config objects, validation rules). Extract when the data structure is stable enough to name and reuse.
+
+### Extract Helper Functions to Consolidate Repeated Field Copying
+
+When building compact/transformed objects from source objects, extract a helper for repeated field copying:
+
+```typescript
+// BAD: Repeated field copying in multiple places
+const compactPost = {
+  id: post.id,
+  url: post.url,
+  author: post.author,
+  text: post.text,
+  postedAt: post.postedAt,
+  metrics: post.metrics,
+  media: post.media,
+  isRepost: post.isRepost,
+  repostedBy: post.repostedBy,
+  quoted: post.quoted ? {
+    id: post.quoted.id,      // Duplicated again!
+    url: post.quoted.url,
+    author: post.quoted.author,
+    // ... 6 more fields
+  } : null,
+};
+
+// GOOD: Extract base transformation
+function toCompactPostBase(post: ExtractedPost): Omit<CompactPost, 'quoted'> {
+  return {
+    id: post.id,
+    url: post.url,
+    author: post.author,
+    text: post.text,
+    postedAt: post.postedAt,
+    metrics: post.metrics,
+    media: post.media,
+    isRepost: post.isRepost,
+    repostedBy: post.repostedBy,
+  };
+}
+
+function flattenQuotedChains(post: ExtractedPost): CompactPost {
+  return {
+    ...toCompactPostBase(post),
+    quoted: post.quoted
+      ? { ...toCompactPostBase(post.quoted), quoted: null }
+      : null,
+  };
+}
+```
+
+**Why:** Eliminates duplication when transforming nested structures. If a field is added to `ExtractedPost`, it's added in one place, not three.
+
+**When to apply:** Any transformation that copies 5+ fields and needs to handle nested structures of the same type.
+
 ### Extract Helper Functions to Consolidate Duplicated Logic
 
 When similar code blocks appear 3-4 times with only data differences, extract to a helper function:
