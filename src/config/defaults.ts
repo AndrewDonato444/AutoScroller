@@ -14,6 +14,7 @@ export const defaultConfig = {
   browser: {
     userDataDir: '~/scrollproxy/chrome',
     headless: false,
+    channel: 'chrome' as const,
     viewport: {
       width: 1280,
       height: 900,
@@ -61,6 +62,7 @@ scroll:
 browser:
   userDataDir: ~/scrollproxy/chrome  # Chrome profile directory
   headless: false          # Must be false for login run
+  channel: chrome          # Use real Chrome binary (chrome|chrome-beta|msedge). Bypasses Google's "insecure browser" OAuth block.
   viewport:
     width: 1280
     height: 900

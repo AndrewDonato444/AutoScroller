@@ -10,6 +10,7 @@
   "scripts": {
     "scroll": "tsx src/index.ts",
     "login": "tsx src/login.ts",
+    "chrome": "scripts/launch-chrome.sh",
     "replay": "tsx src/replay.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

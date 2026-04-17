@@ -71,9 +71,13 @@ export async function handleLogin(config: Config): Promise<void> {
   let context: BrowserContext | null = null;
 
   try {
-    // Launch persistent context
+    // Launch persistent context.
+    // Using `channel: 'chrome'` switches from Playwright's bundled Chromium
+    // to the real installed Google Chrome binary, which bypasses Google's
+    // OAuth bot detection ("Couldn't sign you in — this browser may not be secure").
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
+      channel: config.browser.channel,
       viewport: config.browser.viewport,
     });
 

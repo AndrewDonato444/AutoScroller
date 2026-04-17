@@ -196,11 +196,11 @@ And no screenshot library beyond Playwright's built-in `page.screenshot()` is ad
 
 Given the fallback sends a screenshot to Claude
 When it constructs the prompt
-Then the prompt includes the exact TypeScript type definition of `ExtractedPost` (inlined from the shared types module, not duplicated)
+Then the prompt includes the exact TypeScript type definition of `ExtractedPost` (inlined in the vision module)
 And the prompt requires a JSON array response, one object per visible post, matching that shape
 And the prompt instructs Claude to skip promoted posts and ads (matching feature 6's skip rules)
-And the response is parsed with a shared Zod schema derived from the `ExtractedPost` type so malformed JSON fails validation immediately and is recorded as `apiErrors`, not silently accepted
-(Why: downstream consumers (raw.json writer, state dedup, summarizer) trust the shape. Schema validation at the vision boundary prevents "looks right" partial JSON from poisoning the accumulator. Inlining the type from the shared module keeps the prompt in sync with the DOM path automatically.)
+And the response is parsed with `JSON.parse` and checked to be an array; parse failures or non-array responses throw and are caught and recorded as `apiErrors`, not silently accepted
+(Why: downstream consumers (raw.json writer, state dedup, summarizer) trust the shape. Parse-boundary error recording at the vision layer prevents a malformed response from poisoning the accumulator. The prompt's inlined type definition keeps Claude aligned with the DOM path's expected shape; deeper per-field validation is currently left to downstream consumers.)
 
 ### Scenario: Vision fallback is read-only — no `page.click`, no write actions inferred from the screenshot
 

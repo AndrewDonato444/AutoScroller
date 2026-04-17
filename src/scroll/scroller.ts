@@ -31,6 +31,8 @@ export interface TickHookContext {
 export interface ScrollOptions {
   userDataDir: string;
   headless: boolean;
+  channel?: 'chrome' | 'chrome-beta' | 'msedge';
+  cdpEndpoint?: string;
   viewport: { width: number; height: number };
   budgetMinutes: number;
   jitterMs: [number, number];
@@ -150,13 +152,25 @@ async function initializeBrowserSession(
   userDataDir: string,
   headless: boolean,
   viewport: { width: number; height: number },
-  startTime: number
+  startTime: number,
+  channel?: 'chrome' | 'chrome-beta' | 'msedge',
+  cdpEndpoint?: string
 ): Promise<{ context: BrowserContext; page: Page; browserClosed: boolean } | ScrollResult> {
-  // Launch persistent context
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless,
-    viewport,
-  });
+  // Initialize browser context. Two modes:
+  //   1. cdpEndpoint set: ATTACH to a user-launched Chrome (bypasses all bot detection)
+  //   2. otherwise: LAUNCH our own persistent context (works for most sites, blocked by Google OAuth)
+  let context: BrowserContext;
+  if (cdpEndpoint) {
+    const browser = await chromium.connectOverCDP(cdpEndpoint);
+    const contexts = browser.contexts();
+    context = contexts.length > 0 ? contexts[0] : await browser.newContext({ viewport });
+  } else {
+    context = await chromium.launchPersistentContext(userDataDir, {
+      headless,
+      channel,
+      viewport,
+    });
+  }
 
   let browserClosed = false;
 
@@ -219,6 +233,8 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
   const {
     userDataDir,
     headless,
+    channel,
+    cdpEndpoint,
     viewport,
     budgetMinutes,
     jitterMs,
@@ -233,8 +249,8 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
   // Expand tilde in path
   const resolvedUserDataDir = expandHomeDir(userDataDir);
 
-  // Check if user-data dir exists
-  if (!existsSync(resolvedUserDataDir)) {
+  // Check if user-data dir exists (skipped when attaching over CDP)
+  if (!cdpEndpoint && !existsSync(resolvedUserDataDir)) {
     return {
       status: 'error',
       tickCount: 0,
@@ -255,7 +271,9 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
       resolvedUserDataDir,
       headless,
       viewport,
-      startTime
+      startTime,
+      channel,
+      cdpEndpoint
     );
 
     // If session is invalid, return the error result

@@ -17,6 +17,14 @@ export const configSchema = z.object({
   browser: z.object({
     userDataDir: z.string(),
     headless: z.boolean(),
+    // Use installed Chrome/Edge instead of Playwright's bundled Chromium.
+    channel: z.enum(['chrome', 'chrome-beta', 'msedge']).optional(),
+    // CDP endpoint of a user-launched Chrome (e.g. http://localhost:9222).
+    // When set, ScrollProxy ATTACHES to that Chrome instead of launching its own.
+    // This is the only reliable way past Google's bot detection — Chrome doesn't
+    // know it's being automated because YOU launched it, not Playwright.
+    // Launch Chrome with: --remote-debugging-port=9222 --user-data-dir=<path>
+    cdpEndpoint: z.string().url().optional(),
     viewport: z.object({
       width: z.number(),
       height: z.number(),

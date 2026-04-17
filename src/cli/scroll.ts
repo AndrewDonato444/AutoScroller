@@ -434,8 +434,11 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     await mkdir(screenshotDir, { recursive: true });
   }
 
-  // Print startup line
-  console.log(`scrolling x.com for ${effectiveMinutes}m (persistent context: ${resolvedUserDataDir})`);
+  // Print startup line — show which browser mode is in use so "why isn't Chrome scrolling?" is obvious.
+  const browserMode = config.browser.cdpEndpoint
+    ? `attached via CDP to ${config.browser.cdpEndpoint}`
+    : `launched own context at ${resolvedUserDataDir}`;
+  console.log(`scrolling x.com for ${effectiveMinutes}m (${browserMode})`);
 
   // Create extractor instance
   const extractor = createExtractor();
@@ -444,6 +447,8 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   const result: ScrollResult = await runScroll({
     userDataDir: config.browser.userDataDir,
     headless: config.browser.headless,
+    channel: config.browser.channel,
+    cdpEndpoint: config.browser.cdpEndpoint,
     viewport: config.browser.viewport,
     budgetMinutes: effectiveMinutes,
     jitterMs: config.scroll.jitterMs,
