@@ -22,8 +22,8 @@
 | Status | Count |
 |--------|-------|
 | ✅ Completed | 11 |
-| 🔄 In Progress | 0 |
-| ⬜ Pending | 5 |
+| 🔄 In Progress | 1 |
+| ⬜ Pending | 4 |
 | ⏸️ Blocked | 0 |
 
 **Last updated**: 2026-04-17
@@ -58,7 +58,7 @@
 | 11 | Rolling themes store (last 10 runs) | vision | - | S | 10 | ✅ |
 | 12 | Claude summarizer (themes, worth-clicking, voices, noise) | vision | - | L | 10, 11 | ✅ |
 | 13 | Markdown writer (human summary + links to raw JSON) | vision | - | M | 12 | ✅ |
-| 14 | `--replay <run-id>` flag (re-summarize saved raw JSON) | vision | - | S | 12, 13 | ⬜ |
+| 14 | `--replay <run-id>` flag (re-summarize saved raw JSON) | vision | - | S | 12, 13 | 🔄 |
 | 15 | `--dry-run` flag (scroll + extract, skip Claude + write) | vision | - | S | 7 | ⬜ |
 
 **Phase 2 exit criteria**: Run `pnpm scroll` daily for 3 days. Each run produces a markdown file with themes, worth-clicking items, and a dedup-aware "new since last run" section.

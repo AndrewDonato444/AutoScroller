@@ -293,12 +293,53 @@ claude:
 
   describe('UT-CLI-011: pnpm replay <run-id> routes to replay handler', () => {
     it('should invoke replay handler with run-id', async () => {
-      const result = await runCli(['replay', '2026-04-16-0830']);
+      // Write valid config
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      // Create run directory with raw.json
+      const runsDir = join(testHomeDir, 'scrollproxy', 'runs');
+      const runDir = join(runsDir, '2026-04-16-0830');
+      mkdirSync(runDir, { recursive: true });
+
+      // Create state directory for themes store
+      const stateDir = join(testHomeDir, 'scrollproxy', 'state');
+      mkdirSync(stateDir, { recursive: true });
+
+      // Create a minimal valid raw.json
+      const rawJson = {
+        schemaVersion: 1,
+        runId: '2026-04-16-0830',
+        posts: [
+          {
+            id: 'post-1',
+            url: 'https://x.com/test/status/1',
+            author: {
+              handle: '@testuser',
+              displayName: 'Test User',
+              verified: false,
+            },
+            text: 'Test post 1',
+            postedAt: '2026-04-16T08:30:00.000Z',
+            tickIndex: 0,
+            metrics: { replies: 0, reposts: 0, likes: 0, views: null },
+            media: [],
+            isRepost: false,
+            repostedBy: null,
+            quoted: null,
+          },
+        ],
+      };
+      writeFileSync(join(runDir, 'raw.json'), JSON.stringify(rawJson, null, 2), 'utf-8');
+
+      // Since replay calls the real summarizer, we need to run in dry-run mode
+      // to avoid making actual API calls in this routing test
+      const result = await runCli(['replay', '2026-04-16-0830', '--dry-run']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('replay');
       expect(result.stdout).toContain('2026-04-16-0830');
-      expect(result.stdout).toMatch(/not yet wired.*feature 14/i);
+      expect(result.stdout).toContain('dry-run');
     });
   });
 
@@ -331,14 +372,55 @@ claude:
 
   describe('UT-CLI-014: Flags come after verb; positionals preserved', () => {
     it('should parse flags relative to verb and preserve positionals', async () => {
-      const customConfigPath = join(testTmpDir, 'alt.yaml');
-      writeFileSync(customConfigPath, validConfigYaml.replace('minutes: 10', 'minutes: 5'), 'utf-8');
+      // Create custom config with different output dir
+      const altRunsDir = join(testTmpDir, 'alt-runs');
+      const altStateDir = join(testTmpDir, 'alt-state');
+      mkdirSync(altRunsDir, { recursive: true });
+      mkdirSync(altStateDir, { recursive: true });
 
-      const result = await runCli(['replay', '2026-04-16-0830', '--config', customConfigPath]);
+      const customConfig = validConfigYaml
+        .replace('dir: ~/scrollproxy/runs', `dir: ${altRunsDir}`)
+        .replace('state: ~/scrollproxy/state.json', `state: ${altStateDir}`);
+      const customConfigPath = join(testTmpDir, 'alt.yaml');
+      writeFileSync(customConfigPath, customConfig, 'utf-8');
+
+      // Create run directory with raw.json in the alt-runs location
+      const runDir = join(altRunsDir, '2026-04-16-0830');
+      mkdirSync(runDir, { recursive: true });
+
+      // Create a minimal valid raw.json
+      const rawJson = {
+        schemaVersion: 1,
+        runId: '2026-04-16-0830',
+        posts: [
+          {
+            id: 'post-1',
+            url: 'https://x.com/test/status/1',
+            author: {
+              handle: '@testuser',
+              displayName: 'Test User',
+              verified: false,
+            },
+            text: 'Test post 1',
+            postedAt: '2026-04-16T08:30:00.000Z',
+            tickIndex: 0,
+            metrics: { replies: 0, reposts: 0, likes: 0, views: null },
+            media: [],
+            isRepost: false,
+            repostedBy: null,
+            quoted: null,
+          },
+        ],
+      };
+      writeFileSync(join(runDir, 'raw.json'), JSON.stringify(rawJson, null, 2), 'utf-8');
+
+      // Test with dry-run to avoid API calls
+      const result = await runCli(['replay', '2026-04-16-0830', '--config', customConfigPath, '--dry-run']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('2026-04-16-0830');
-      // Should use the custom config
+      // Should use the custom config (dry-run confirms it loaded the config successfully)
+      expect(result.stdout).toContain('dry-run');
     });
   });
 
