@@ -9,7 +9,9 @@ import { detectTrends } from '../trends/trend-detector.js';
 import { runWriters, type Writer, type WriteContext } from '../writer/writer.js';
 import { markdownWriter } from '../writer/markdown.js';
 import { createNotionWriter } from '../writer/notion.js';
-import { writeFile, rename, mkdir } from 'node:fs/promises';
+import { createVisionFallback, type VisionStats } from '../extract/vision-fallback.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export interface ScrollFlags {
@@ -130,6 +132,121 @@ async function writeSummaryErrorJson(
 }
 
 /**
+ * Clean up screenshot directory after writers complete.
+ */
+async function cleanupScreenshots(screenshotDir: string): Promise<void> {
+  try {
+    await rm(screenshotDir, { recursive: true, force: true });
+  } catch {
+    // Silently ignore cleanup errors
+  }
+}
+
+/**
+ * Run vision fallback rescue if triggered.
+ * Returns updated posts and visionStats if rescue ran, or original posts and undefined if not.
+ */
+async function runVisionFallbackIfNeeded(params: {
+  config: Config;
+  posts: ExtractedPost[];
+  stats: any;
+  runId: string;
+  screenshotDir: string;
+  isDryRun: boolean;
+}): Promise<{ posts: ExtractedPost[]; visionStats?: VisionStats; triggerReason?: string }> {
+  const { config, posts, stats, runId, screenshotDir, isDryRun } = params;
+
+  // Create vision fallback instance
+  const fallback = createVisionFallback(config.extractor.visionFallback);
+
+  // Check if rescue should trigger
+  const triggerResult = fallback.shouldTrigger(stats, posts);
+
+  if (!triggerResult.triggered) {
+    // No rescue needed
+    return { posts };
+  }
+
+  // Rescue would trigger
+  if (isDryRun) {
+    // Dry-run: report trigger but don't actually call API
+    return {
+      posts,
+      triggerReason: triggerResult.reason,
+    };
+  }
+
+  // Create Anthropic client
+  const apiKey = config.claude.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    // No API key - can't rescue
+    return {
+      posts,
+      visionStats: {
+        screenshotsSent: 0,
+        screenshotsDropped: 0,
+        visionPostsExtracted: 0,
+        visionPostsMerged: 0,
+        visionDuplicatesSkipped: 0,
+        apiCalls: 0,
+        apiErrors: [
+          {
+            screenshotPath: '',
+            errorMessage: 'no API key provided',
+            attempt: 0,
+          },
+        ],
+        costEstimateUsd: 0,
+        triggerReason: triggerResult.reason,
+      },
+    };
+  }
+
+  const anthropicClient = new Anthropic({ apiKey });
+
+  try {
+    // Run rescue
+    const rescueResult = await fallback.rescue({
+      runId,
+      screenshotDir,
+      existingPosts: posts,
+      existingStats: stats,
+      anthropicClient,
+    });
+
+    return {
+      posts: rescueResult.posts,
+      visionStats: {
+        ...rescueResult.visionStats,
+        triggerReason: triggerResult.reason,
+      },
+    };
+  } catch (error: any) {
+    // Rescue failed unexpectedly - return original posts with error
+    return {
+      posts,
+      visionStats: {
+        screenshotsSent: 0,
+        screenshotsDropped: 0,
+        visionPostsExtracted: 0,
+        visionPostsMerged: 0,
+        visionDuplicatesSkipped: 0,
+        apiCalls: 0,
+        apiErrors: [
+          {
+            screenshotPath: '',
+            errorMessage: error.message,
+            attempt: 0,
+          },
+        ],
+        costEstimateUsd: 0,
+        triggerReason: triggerResult.reason,
+      },
+    };
+  }
+}
+
+/**
  * Write raw.json and update dedup cache.
  * Returns the write result and dedup partition for further processing.
  */
@@ -140,13 +257,14 @@ async function writeRawJsonAndUpdateCache(params: {
   posts: ExtractedPost[];
   stats: any;
   meta: any;
+  visionStats?: VisionStats;
 }): Promise<{
   writeResult: Awaited<ReturnType<typeof writeRawJson>>;
   newPosts: ExtractedPost[];
   seenPosts: ExtractedPost[];
   summaryFragment: string;
 }> {
-  const { outputDir, stateDir, runId, posts, stats, meta } = params;
+  const { outputDir, stateDir, runId, posts, stats, meta, visionStats } = params;
 
   // Write raw.json
   const writeResult = await writeRawJson({
@@ -155,6 +273,7 @@ async function writeRawJsonAndUpdateCache(params: {
     posts,
     stats,
     meta,
+    visionStats,
   });
 
   // Update dedup cache
@@ -180,8 +299,9 @@ async function runSummarizerAndWriters(params: {
   rawJsonPath: string;
   endedAt: Date;
   summaryLine: string;
+  visionStats?: VisionStats;
 }): Promise<{ success: boolean; summaryLine: string; errorDetails: string[] }> {
-  const { posts, newPosts, config, runId, runDir, rawJsonPath, endedAt, summaryLine } = params;
+  const { posts, newPosts, config, runId, runDir, rawJsonPath, endedAt, summaryLine, visionStats } = params;
 
   // Load themes store to get prior themes
   const themesStore = await loadThemesStore(config.output.state);
@@ -243,6 +363,7 @@ async function runSummarizerAndWriters(params: {
       summaryJsonPath,
       displayRawJsonPath: formatDisplayPath(rawJsonPath),
       displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
+      visionStats,
     };
 
     const { receipts, markdownSucceeded } = await runWriters({
@@ -303,6 +424,16 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   const startedAt = new Date();
   const runId = generateRunId(startedAt);
 
+  // Set up screenshot directory for vision fallback
+  const resolvedOutputDir = expandHomeDir(config.output.dir);
+  const runDir = join(resolvedOutputDir, runId);
+  const screenshotDir = join(runDir, 'screenshots');
+
+  // Create screenshot directory if vision fallback is enabled
+  if (config.extractor.visionFallback.enabled) {
+    await mkdir(screenshotDir, { recursive: true });
+  }
+
   // Print startup line
   console.log(`scrolling x.com for ${effectiveMinutes}m (persistent context: ${resolvedUserDataDir})`);
 
@@ -320,6 +451,8 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     longPauseMs: config.scroll.longPauseMs,
     dryRun: isDryRun,
     onTick: extractor.onTick,
+    screenshotDir: config.extractor.visionFallback.enabled ? screenshotDir : undefined,
+    screenshotEveryTicks: config.extractor.visionFallback.screenshotEveryTicks,
   });
 
   // Handle result
@@ -382,15 +515,55 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
   // Completed successfully
   if (isDryRun) {
-    console.log(
-      `dry-run complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped), writer skipped`
-    );
+    // Dry-run: check if rescue would have triggered
+    const posts = extractor.getPosts();
+    const { triggerReason } = await runVisionFallbackIfNeeded({
+      config,
+      posts,
+      stats,
+      runId,
+      screenshotDir,
+      isDryRun: true,
+    });
+
+    let dryRunLine = `dry-run complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped), writer skipped`;
+
+    if (triggerReason) {
+      dryRunLine += ` (vision rescue would have triggered: ${triggerReason})`;
+    }
+
+    console.log(dryRunLine);
+
+    // Clean up screenshots
+    await cleanupScreenshots(screenshotDir);
   } else {
     let summaryLine = `scroll complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped)`;
 
     try {
       const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
-      const posts = extractor.getPosts();
+      let posts = extractor.getPosts();
+
+      // Run vision fallback if needed
+      const { posts: rescuedPosts, visionStats } = await runVisionFallbackIfNeeded({
+        config,
+        posts,
+        stats,
+        runId,
+        screenshotDir,
+        isDryRun: false,
+      });
+
+      // Update posts with rescued posts
+      posts = rescuedPosts;
+
+      // Update summary line with rescue status
+      if (visionStats) {
+        if (visionStats.visionPostsMerged > 0) {
+          summaryLine += `, vision rescued ${visionStats.visionPostsMerged} more`;
+        } else if (visionStats.apiErrors.length > 0) {
+          summaryLine += ', vision rescue failed (see raw.json)';
+        }
+      }
 
       // Write raw.json and update dedup cache
       let newPosts: ExtractedPost[];
@@ -411,11 +584,15 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
             minutes: effectiveMinutes,
             dryRun: isDryRun,
           },
+          visionStats,
         });
         newPosts = writeAndCacheResult.newPosts;
         writeResult = writeAndCacheResult.writeResult;
         summaryLine += writeAndCacheResult.summaryFragment;
       } catch (cacheError: any) {
+        // Clean up screenshots before exiting
+        await cleanupScreenshots(screenshotDir);
+
         // Dedup cache failure is non-fatal - the raw.json is safe
         console.log(summaryLine);
         console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);
@@ -433,6 +610,7 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
           rawJsonPath: writeResult.rawJsonPath,
           endedAt,
           summaryLine,
+          visionStats,
         });
 
         console.log(result.summaryLine);
@@ -442,12 +620,18 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
           console.log(detail);
         });
 
+        // Clean up screenshots after all writers complete
+        await cleanupScreenshots(screenshotDir);
+
         if (result.success) {
           process.exit(EXIT_SUCCESS);
         } else {
           process.exit(EXIT_ERROR);
         }
       } catch (summarizerError: any) {
+        // Clean up screenshots before exiting
+        await cleanupScreenshots(screenshotDir);
+
         // Unexpected summarizer error
         console.log(summaryLine);
         console.log(`summarizer error: ${summarizerError.message}`);

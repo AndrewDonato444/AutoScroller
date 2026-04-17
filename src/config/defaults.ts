@@ -32,6 +32,16 @@ export const defaultConfig = {
     model: 'claude-sonnet-4-6',
     apiKey: undefined,
   },
+
+  extractor: {
+    visionFallback: {
+      enabled: true,
+      minPosts: 20,
+      maxSelectorFailureRatio: 0.3,
+      screenshotEveryTicks: 5,
+      maxScreenshotsPerRun: 24,
+    },
+  },
 };
 
 /**
@@ -76,4 +86,13 @@ output:
 claude:
   model: claude-sonnet-4-6
   # apiKey: null  # Optional; uses ANTHROPIC_API_KEY env var if not set
+
+# Extractor settings
+extractor:
+  visionFallback:
+    enabled: true                 # Enable vision fallback rescue
+    minPosts: 20                  # Trigger if post count < this
+    maxSelectorFailureRatio: 0.3  # Trigger if failure ratio > this
+    screenshotEveryTicks: 5       # Capture screenshot every N ticks
+    maxScreenshotsPerRun: 24      # Max screenshots to send to vision API
 `;

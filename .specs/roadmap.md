@@ -22,8 +22,8 @@
 | Status | Count |
 |--------|-------|
 | ✅ Completed | 15 |
-| 🔄 In Progress | 0 |
-| ⬜ Pending | 1 |
+| 🔄 In Progress | 1 |
+| ⬜ Pending | 0 |
 | ⏸️ Blocked | 0 |
 
 **Last updated**: 2026-04-17
@@ -73,7 +73,7 @@
 |---|---------|--------|------|------------|------|--------|
 | 20 | Writer interface + NotionWriter implementation | vision | - | L | 13 | ✅ |
 | 21 | Cross-run trend detection (themes drifting over N runs) | vision | - | M | 11, 12 | ✅ |
-| 22 | Vision-based fallback when DOM selectors break | vision | - | L | 6 | ⬜ |
+| 22 | Vision-based fallback when DOM selectors break | vision | - | L | 6 | 🔄 |
 
 **Phase 3 exit criteria**: At least one additional destination is usable end-to-end; the tool survives a real X DOM change without developer intervention.
 

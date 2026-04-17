@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
 import { chromium } from 'playwright';
 import type { BrowserContext, Page } from 'playwright';
 
@@ -38,6 +39,8 @@ export interface ScrollOptions {
   dryRun: boolean;
   onTick?: (ctx: TickHookContext) => Promise<void>;
   rng?: () => number; // For testing - seedable RNG
+  screenshotDir?: string; // Directory to save screenshots
+  screenshotEveryTicks?: number; // Capture screenshot every N ticks (0 to disable)
 }
 
 // Constants
@@ -107,6 +110,35 @@ async function invokeTickHook(
   } catch (error: any) {
     // Log error but continue scrolling
     console.log(`tick ${context.tickIndex} hook error: ${error.message}`);
+  }
+}
+
+/**
+ * Capture a screenshot of the page and save to disk.
+ * Runs in background with error handling.
+ */
+async function captureScreenshot(
+  page: Page,
+  screenshotDir: string,
+  tickIndex: number
+): Promise<void> {
+  try {
+    // Ensure screenshot directory exists
+    await mkdir(screenshotDir, { recursive: true });
+
+    // Generate filename with zero-padded tick index
+    const filename = `tick-${tickIndex.toString().padStart(5, '0')}.png`;
+    const screenshotPath = join(screenshotDir, filename);
+
+    // Take full-page screenshot
+    const screenshot = await page.screenshot({ fullPage: true });
+
+    // Write to disk (fire-and-forget, no await to avoid blocking scroll)
+    writeFile(screenshotPath, screenshot).catch(() => {
+      // Silently ignore screenshot write errors
+    });
+  } catch {
+    // Silently ignore screenshot capture errors
   }
 }
 
@@ -194,6 +226,8 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
     longPauseMs,
     onTick,
     rng = Math.random,
+    screenshotDir,
+    screenshotEveryTicks = 0,
   } = options;
 
   // Expand tilde in path
@@ -261,10 +295,17 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
       await page.mouse.wheel(0, scrollDelta);
       tickCount++;
 
+      const currentTickIndex = tickCount - 1; // 0-indexed
+
+      // Capture screenshot if enabled and on the right cadence
+      if (screenshotDir && screenshotEveryTicks > 0 && currentTickIndex % screenshotEveryTicks === 0) {
+        captureScreenshot(page, screenshotDir, currentTickIndex); // Fire-and-forget
+      }
+
       // Call tick hook if provided
       await invokeTickHook(onTick, {
         page,
-        tickIndex: tickCount - 1, // 0-indexed
+        tickIndex: currentTickIndex,
         elapsedMs: Date.now() - startTime,
       });
 

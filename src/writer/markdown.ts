@@ -1,5 +1,6 @@
 import type { RunSummary } from '../summarizer/summarizer.js';
 import type { Writer, WriteContext, WriteReceipt } from './writer.js';
+import type { VisionStats } from '../extract/vision-fallback.js';
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -36,6 +37,7 @@ export interface MarkdownContext {
   summaryJsonPath: string; // Absolute path to summary.json
   displayRawJsonPath?: string; // ~-compressed path for display
   displaySummaryJsonPath?: string; // ~-compressed path for display
+  visionStats?: VisionStats; // Vision fallback stats (if rescue was triggered)
 }
 
 /**
@@ -171,6 +173,27 @@ function renderNoise(noise: RunSummary['noise']): string {
 }
 
 /**
+ * Render vision rescue banner if applicable.
+ */
+function renderVisionBanner(visionStats?: VisionStats): string | null {
+  if (!visionStats) {
+    return null;
+  }
+
+  // Check if rescue succeeded
+  if (visionStats.visionPostsMerged > 0) {
+    return '⚠ This run was rescued by vision fallback — DOM extractor dropped posts; selectors likely drifted. See raw.json for selector failures.\n';
+  }
+
+  // Check if rescue failed
+  if (visionStats.apiErrors.length > 0) {
+    return '⚠ Vision fallback was triggered but failed (see visionStats.apiErrors in raw.json) — DOM extractor selectors likely need patching.\n';
+  }
+
+  return null;
+}
+
+/**
  * Render a summary to markdown.
  * Pure function — no I/O, no Date.now(), no env reads.
  */
@@ -195,6 +218,12 @@ export function renderSummaryMarkdown(summary: RunSummary, context: MarkdownCont
   lines.push(
     `**Verdict**: ${summary.feedVerdict} · **New**: ${summary.newVsSeen.newCount} · **Seen**: ${summary.newVsSeen.seenCount} · **Model**: ${summary.model}\n`
   );
+
+  // Vision rescue banner (if applicable)
+  const visionBanner = renderVisionBanner(context.visionStats);
+  if (visionBanner) {
+    lines.push(visionBanner);
+  }
 
   // Themes
   lines.push(`${HEADER_THEMES}\n`);
@@ -237,8 +266,9 @@ export async function writeSummaryMarkdown(params: {
   summaryJsonPath?: string;
   displayRawJsonPath?: string;
   displaySummaryJsonPath?: string;
+  visionStats?: VisionStats;
 }): Promise<{ summaryMdPath: string }> {
-  const { runDir, summary, rawJsonPath, summaryJsonPath, displayRawJsonPath, displaySummaryJsonPath } = params;
+  const { runDir, summary, rawJsonPath, summaryJsonPath, displayRawJsonPath, displaySummaryJsonPath, visionStats } = params;
 
   // Default summaryJsonPath if not provided
   const effectiveSummaryJsonPath = summaryJsonPath || join(runDir, SUMMARY_JSON_FILENAME);
@@ -249,6 +279,7 @@ export async function writeSummaryMarkdown(params: {
     summaryJsonPath: effectiveSummaryJsonPath,
     displayRawJsonPath,
     displaySummaryJsonPath,
+    visionStats,
   };
 
   // Render markdown
@@ -284,6 +315,7 @@ export const markdownWriter: Writer = {
         summaryJsonPath: context.summaryJsonPath,
         displayRawJsonPath: context.displayRawJsonPath,
         displaySummaryJsonPath: context.displaySummaryJsonPath,
+        visionStats: context.visionStats,
       });
 
       const displayPath = context.displayRawJsonPath

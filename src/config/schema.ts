@@ -40,6 +40,30 @@ export const configSchema = z.object({
     model: z.string(),
     apiKey: z.string().optional(),
   }),
+
+  extractor: z.object({
+    visionFallback: z.object({
+      enabled: z.boolean().default(true),
+      minPosts: z.number().min(0).default(20),
+      maxSelectorFailureRatio: z.number().min(0).max(1).default(0.3),
+      screenshotEveryTicks: z.number().min(1).default(5),
+      maxScreenshotsPerRun: z.number().min(1).default(24),
+    }).default({
+      enabled: true,
+      minPosts: 20,
+      maxSelectorFailureRatio: 0.3,
+      screenshotEveryTicks: 5,
+      maxScreenshotsPerRun: 24,
+    }),
+  }).default({
+    visionFallback: {
+      enabled: true,
+      minPosts: 20,
+      maxSelectorFailureRatio: 0.3,
+      screenshotEveryTicks: 5,
+      maxScreenshotsPerRun: 24,
+    },
+  }),
 }).strict(); // Reject unknown fields
 
 export type Config = z.infer<typeof configSchema>;

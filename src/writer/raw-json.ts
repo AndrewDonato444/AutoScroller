@@ -2,6 +2,7 @@ import { mkdir, writeFile, rename } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
 import type { ExtractedPost, SelectorFailure } from '../extract/extractor.js';
+import type { VisionStats } from '../extract/vision-fallback.js';
 
 /**
  * Run metadata for a scroll session.
@@ -34,6 +35,7 @@ export interface WriteRawJsonParams {
   posts: ExtractedPost[];
   stats: ExtractionStats;
   meta: RunMeta;
+  visionStats?: VisionStats;
 }
 
 /**
@@ -66,6 +68,7 @@ interface RawJsonPayload {
   };
   selectorFailures: SelectorFailure[];
   posts: ExtractedPost[];
+  visionStats?: VisionStats;
 }
 
 /**
@@ -118,7 +121,7 @@ export function generateRunId(now: Date = new Date()): string {
  * @returns Paths to the created run directory and raw.json file
  */
 export async function writeRawJson(params: WriteRawJsonParams): Promise<WriteRawJsonResult> {
-  const { outputDir, runId, posts, stats, meta } = params;
+  const { outputDir, runId, posts, stats, meta, visionStats } = params;
 
   // Expand ~ if present
   const resolvedOutputDir = expandHomeDir(outputDir);
@@ -150,6 +153,7 @@ export async function writeRawJson(params: WriteRawJsonParams): Promise<WriteRaw
     },
     selectorFailures: stats.selectorFailures,
     posts,
+    ...(visionStats && { visionStats }),
   };
 
   // Serialize with 2-space indentation, UTF-8

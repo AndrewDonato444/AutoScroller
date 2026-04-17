@@ -1,4 +1,5 @@
 import type { RunSummary } from '../summarizer/summarizer.js';
+import type { VisionStats } from '../extract/vision-fallback.js';
 
 /**
  * Context passed to writers containing file paths and run metadata.
@@ -10,6 +11,7 @@ export interface WriteContext {
   summaryJsonPath: string;
   displayRawJsonPath?: string;
   displaySummaryJsonPath?: string;
+  visionStats?: VisionStats;
 }
 
 /**

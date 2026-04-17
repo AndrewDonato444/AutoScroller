@@ -19,6 +19,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | Domain | Feature | Source | Tests | Components | Status |
 |--------|---------|--------|-------|------------|--------|
 | expansion | [Cross-Run Trend Detection](.specs/features/expansion/cross-run-trend-detection.feature.md) | `src/trends/trend-detector.ts` | tests/expansion/trend-detector.test.ts | - | implemented |
+| expansion | [Vision Fallback](.specs/features/expansion/vision-fallback.feature.md) | `src/extract/vision-fallback.ts` | tests/expansion/vision-fallback.test.ts | - | implemented |
 | expansion | [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md) | `src/writer/writer.ts` | tests/expansion/writer-interface.test.ts, tests/expansion/notion-writer.test.ts | - | implemented |
 | foundation | [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md) | `src/cli/index.ts` | tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Config Loader](.specs/features/foundation/config-loader.feature.md) | `src/config/load.ts` | tests/foundation/config-loader.test.ts | - | implemented |
@@ -43,8 +44,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | stub | 0 |
 | specced | 0 |
 | tested | 0 |
-| implemented | 15 |
-| **Total** | **15** |
+| implemented | 16 |
+| **Total** | **16** |
 
 ---
 
@@ -65,6 +66,7 @@ _None_
 ### Implemented
 
 - [Cross-Run Trend Detection](.specs/features/expansion/cross-run-trend-detection.feature.md)
+- [Vision Fallback](.specs/features/expansion/vision-fallback.feature.md)
 - [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md)
 - [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md)
 - [Config Loader](.specs/features/foundation/config-loader.feature.md)
