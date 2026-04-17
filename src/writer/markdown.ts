@@ -13,6 +13,7 @@ const SUMMARY_JSON_FILENAME = 'summary.json';
 
 // Section headers
 const HEADER_THEMES = '## Themes';
+const HEADER_TRENDS = '## Trends';
 const HEADER_WORTH_CLICKING = '## Worth clicking';
 const HEADER_VOICES = '## Voices';
 const HEADER_NOISE = '## Noise';
@@ -67,6 +68,58 @@ function renderThemes(themes: string[]): string {
   }
 
   return themes.map(theme => `- ${theme}`).join('\n') + '\n';
+}
+
+/**
+ * Render the trends section.
+ * Returns null if trends are undefined or all categories are empty.
+ */
+function renderTrends(trends: RunSummary['trends']): string | null {
+  // Omit section if trends undefined or all categories empty
+  if (
+    !trends ||
+    (trends.persistent.length === 0 && trends.emerging.length === 0 && trends.fading.length === 0)
+  ) {
+    return null;
+  }
+
+  const lines: string[] = [];
+
+  // Calculate window size from max runCount among persistent themes
+  // If no persistent themes, we can't reliably show the denominator
+  const windowSize = trends.persistent.length > 0
+    ? Math.max(...trends.persistent.map(t => t.runCount))
+    : 0;
+
+  // Persistent subsection
+  if (trends.persistent.length > 0) {
+    lines.push('### Persistent\n');
+    trends.persistent.forEach(item => {
+      lines.push(`- ${item.theme} — ${item.runCount}/${windowSize} runs\n`);
+    });
+    lines.push('');
+  }
+
+  // Emerging subsection
+  if (trends.emerging.length > 0) {
+    lines.push('### Emerging\n');
+    trends.emerging.forEach(item => {
+      lines.push(`- ${item.theme} — first seen ${item.firstSeenRunId}\n`);
+    });
+    lines.push('');
+  }
+
+  // Fading subsection
+  if (trends.fading.length > 0) {
+    lines.push('### Fading\n');
+    trends.fading.forEach(item => {
+      const runsText = item.runsSinceLastSeen === 1 ? 'run' : 'runs';
+      lines.push(`- ${item.theme} — last seen ${item.lastSeenRunId}, ${item.runsSinceLastSeen} ${runsText} ago\n`);
+    });
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }
 
 /**
@@ -146,6 +199,13 @@ export function renderSummaryMarkdown(summary: RunSummary, context: MarkdownCont
   // Themes
   lines.push(`${HEADER_THEMES}\n`);
   lines.push(renderThemes(summary.themes));
+
+  // Trends (optional, rendered between Themes and Worth clicking)
+  const trendsContent = renderTrends(summary.trends);
+  if (trendsContent) {
+    lines.push(`${HEADER_TRENDS}\n`);
+    lines.push(trendsContent);
+  }
 
   // Worth clicking
   lines.push(`${HEADER_WORTH_CLICKING}\n`);

@@ -70,6 +70,24 @@ export interface RunSummary {
   noise: NoiseSummary;
   newVsSeen: { newCount: number; seenCount: number };
   feedVerdict: 'signal' | 'mixed' | 'noise';
+  trends?: {
+    schemaVersion: 1;
+    persistent: Array<{
+      theme: string;
+      runCount: number;
+      firstSeenRunId: string;
+      lastSeenRunId: string;
+    }>;
+    emerging: Array<{
+      theme: string;
+      firstSeenRunId: string;
+    }>;
+    fading: Array<{
+      theme: string;
+      lastSeenRunId: string;
+      runsSinceLastSeen: number;
+    }>;
+  };
 }
 
 /**

@@ -5,6 +5,7 @@ import { writeRawJson, generateRunId } from '../writer/raw-json.js';
 import { loadDedupCache, saveDedupCache, partitionPosts, appendHashes } from '../state/dedup-cache.js';
 import { summarizeRun, type SummarizerInput } from '../summarizer/summarizer.js';
 import { loadThemesStore, saveThemesStore, appendRun, recentThemes } from '../state/rolling-themes.js';
+import { detectTrends } from '../trends/trend-detector.js';
 import { runWriters, type Writer, type WriteContext } from '../writer/writer.js';
 import { markdownWriter } from '../writer/markdown.js';
 import { createNotionWriter } from '../writer/notion.js';
@@ -201,9 +202,21 @@ async function runSummarizerAndWriters(params: {
   const summarizerResult = await summarizeRun(summarizerInput);
 
   if (summarizerResult.status === 'ok') {
+    // Detect trends from the current store (before updating it)
+    const trendReport = detectTrends({
+      store: themesStore,
+      currentThemes: summarizerResult.summary.themes,
+    });
+
+    // Add trends to summary
+    const summaryWithTrends = {
+      ...summarizerResult.summary,
+      trends: trendReport,
+    };
+
     // Write summary.json
     const summaryJsonPath = join(runDir, 'summary.json');
-    await writeSummaryJson(runDir, summarizerResult.summary);
+    await writeSummaryJson(runDir, summaryWithTrends);
 
     // Update themes store
     const updatedStore = appendRun(themesStore, {
@@ -214,8 +227,8 @@ async function runSummarizerAndWriters(params: {
     await saveThemesStore(updatedStore, config.output.state);
 
     // Update summary line with summarizer stats
-    const themeCount = summarizerResult.summary.themes.length;
-    const worthClickingCount = summarizerResult.summary.worthClicking.length;
+    const themeCount = summaryWithTrends.themes.length;
+    const worthClickingCount = summaryWithTrends.worthClicking.length;
     let updatedSummaryLine = summaryLine.replace(
       / — saved to .*$/,
       ` — summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — saved to ${formatDisplayPath(rawJsonPath)}`
@@ -234,7 +247,7 @@ async function runSummarizerAndWriters(params: {
 
     const { receipts, markdownSucceeded } = await runWriters({
       writers,
-      summary: summarizerResult.summary,
+      summary: summaryWithTrends,
       context,
     });
 

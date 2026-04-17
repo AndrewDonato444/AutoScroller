@@ -18,7 +18,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 | Domain | Feature | Source | Tests | Components | Status |
 |--------|---------|--------|-------|------------|--------|
-| expansion | [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md) | `src/writer/writer.ts` | tests/expansion/writer-interface.test.ts, tests/expansion/notion-writer.test.ts | - | stub |
+| expansion | [Cross-Run Trend Detection](.specs/features/expansion/cross-run-trend-detection.feature.md) | `src/trends/trend-detector.ts` | tests/expansion/trend-detector.test.ts | - | implemented |
+| expansion | [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md) | `src/writer/writer.ts` | tests/expansion/writer-interface.test.ts, tests/expansion/notion-writer.test.ts | - | implemented |
 | foundation | [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md) | `src/cli/index.ts` | tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Config Loader](.specs/features/foundation/config-loader.feature.md) | `src/config/load.ts` | tests/foundation/config-loader.test.ts | - | implemented |
 | foundation | [Dry-Run Flag](.specs/features/foundation/dry-run-flag.feature.md) | `src/cli/scroll.ts` | tests/foundation/scroll-handler.test.ts, tests/foundation/cli-entry.test.ts, tests/foundation/replay.test.ts | - | implemented |
@@ -39,11 +40,11 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 | Status | Count |
 |--------|-------|
-| stub | 1 |
+| stub | 0 |
 | specced | 0 |
 | tested | 0 |
-| implemented | 13 |
-| **Total** | **14** |
+| implemented | 15 |
+| **Total** | **15** |
 
 ---
 
@@ -51,7 +52,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 ### Stub
 
-- [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md)
+_None_
 
 ### Specced
 
@@ -63,6 +64,8 @@ _None_
 
 ### Implemented
 
+- [Cross-Run Trend Detection](.specs/features/expansion/cross-run-trend-detection.feature.md)
+- [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md)
 - [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md)
 - [Config Loader](.specs/features/foundation/config-loader.feature.md)
 - [Dry-Run Flag](.specs/features/foundation/dry-run-flag.feature.md)
