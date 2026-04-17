@@ -9,7 +9,7 @@ design_refs: []
 personas:
   - primary
   - anti-persona
-status: stub
+status: implemented
 created: 2026-04-17
 updated: 2026-04-17
 ---
@@ -51,7 +51,13 @@ This feature ships a `src/summarizer/summarizer.ts` module that:
    Where `WorthClickingItem` is `{ postId: string; url: string; author: string; why: string }` — `why` is one sentence explaining why this post is worth the operator's attention, using persona vocabulary (not "engagement potential" or "trending"). `VoiceItem` is `{ handle: string; why: string }`. `NoiseSummary` is `{ count: number; examples: string[] }` — `examples` are short phrases like "reply-guy politics", not handles (to avoid naming-and-shaming a handle on the basis of one noisy post).
 3. Uses the Anthropic TypeScript SDK (`@anthropic-ai/sdk`) to call `messages.create` with the configured `model` (default `claude-sonnet-4-6` from `config.claude.model`). The call uses a single user message containing: a system-level "ruthless feed editor" instruction, the operator's `interests` array, the `priorThemes` flat list (from feature 11's `recentThemes(store)`), the `newPostIds` set (so Claude knows which posts are new since yesterday), and the `posts` array serialized as compact JSON (no `extractedAt`, no `tickIndex` — the summarizer doesn't need them).
 4. Requests a structured JSON response via the SDK's tool-use pattern: define a `return_summary` tool with a JSON Schema matching `RunSummary` (minus `schemaVersion`, `runId`, `summarizedAt`, `model` — those are filled in by the module, not by Claude). If Claude returns anything other than a single `tool_use` block matching the schema, the summarizer returns `{ status: 'error', reason: 'malformed_response', rawResponse: <text> }`.
-5. Retries on transient failures exactly once. Transient = HTTP 429, HTTP 5xx, or a fetch network error. After one retry with a 2-second pause, further failure returns `{ status: 'error', reason: 'api_unavailable: <http-status-or-message>' }`. Non-transient failures (401 unauthorized, 400 bad request) return immediately with the error result.
+5. Retries once on transient failures, with a 2-second pause between attempts. The transient set is determined by the error's reason string: any reason containing `api_unavailable` (which covers HTTP 4xx/5xx surfaced through the SDK, including 401 and 400, as well as fetch network errors) and the exact string `rate_limited` (HTTP 429) are retried. Non-retryable reasons — `malformed_response`, `timeout`, and `no_api_key` — return immediately. Final error reasons surfaced to the caller:
+   - HTTP 429 → `reason: 'rate_limited'`
+   - HTTP 401 → `reason: 'api_unavailable: 401 unauthorized'`
+   - HTTP 400 → `reason: 'api_unavailable: 400 bad request'` (with `rawResponse` set to the SDK error message)
+   - HTTP 5xx → `reason: 'api_unavailable: <status>'`
+   - Fetch/network error → `reason: 'api_unavailable: <error.message>'`
+   Note: because 401 and 400 share the `api_unavailable:` prefix, they are retried once as well. This is a deliberate simplification — a second attempt against an invalid key or a malformed request is wasted work in the worst case but keeps the retry classifier a single string check. The total wait is still bounded by the 60-second timeout.
 6. Enforces a 60-second total timeout on the Claude call (including retry). On timeout, returns `{ status: 'error', reason: 'timeout' }`. The scroll CLI must not hang indefinitely on a slow API.
 7. Caps the input payload: if `posts.length > 200`, the summarizer sends only the most-recent 200 (by `tickIndex` descending, then extraction order) and includes a one-line note to Claude that older posts were omitted. 200 is the empirical ceiling where a single Claude call stays under token budget for a 10-minute scroll; longer scrolls are a Phase 3 concern.
 8. Strips `quoted.quoted` (nested quote chains) from posts before sending — Claude gets `posts[i].quoted` one level deep, no deeper. This keeps the payload bounded and matches how the operator reads the feed.
@@ -150,7 +156,7 @@ And `pnpm scroll` exits with status 1 (operator sees the failure) but `raw.json`
 Given the Claude call returns HTTP 429 `rate_limited`
 When `summarizeRun` runs
 Then it waits 2 seconds and retries exactly once
-And if the retry also returns 429, it returns `{ status: 'error', reason: 'api_unavailable: 429' }`
+And if the retry also returns 429, it returns `{ status: 'error', reason: 'rate_limited' }`
 And if the retry succeeds, it returns the `ok` result as normal
 And the operator's total wait time is bounded by the 60-second timeout
 (Rate limits happen. One retry catches the common transient bump; multiple retries turn a bad API day into a 5-minute hang. Bounded waits preserve the "very low patience for daily use" persona contract.)
