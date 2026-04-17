@@ -2,6 +2,30 @@ import type { RunSummary } from '../summarizer/summarizer.js';
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+// Schema version this renderer supports
+const SUPPORTED_SCHEMA_VERSION = 1;
+
+// File names
+const SUMMARY_MD_FILENAME = 'summary.md';
+const SUMMARY_MD_TMP_FILENAME = 'summary.md.tmp';
+const SUMMARY_JSON_FILENAME = 'summary.json';
+
+// Section headers
+const HEADER_THEMES = '## Themes';
+const HEADER_WORTH_CLICKING = '## Worth clicking';
+const HEADER_VOICES = '## Voices';
+const HEADER_NOISE = '## Noise';
+
+// Footer labels
+const FOOTER_RAW_POSTS = 'Raw posts:';
+const FOOTER_SUMMARY_JSON = 'Summary JSON:';
+
+// Placeholder messages
+const PLACEHOLDER_NO_THEMES = '_(no themes — summarizer returned an empty list)_';
+const PLACEHOLDER_NOTHING_WORTH_CLICKING = '_Nothing worth clicking this run._';
+const PLACEHOLDER_NO_VOICES = '_No standout voices this run._';
+const PLACEHOLDER_NO_NOISE = 'No noise flagged.';
+
 /**
  * Context for rendering markdown (paths to reference in footer).
  */
@@ -38,7 +62,7 @@ function formatTimestamp(isoString: string): string {
  */
 function renderThemes(themes: string[]): string {
   if (themes.length === 0) {
-    return '_(no themes — summarizer returned an empty list)_\n';
+    return `${PLACEHOLDER_NO_THEMES}\n`;
   }
 
   return themes.map(theme => `- ${theme}`).join('\n') + '\n';
@@ -49,7 +73,7 @@ function renderThemes(themes: string[]): string {
  */
 function renderWorthClicking(worthClicking: RunSummary['worthClicking']): string {
   if (worthClicking.length === 0) {
-    return '_Nothing worth clicking this run._\n';
+    return `${PLACEHOLDER_NOTHING_WORTH_CLICKING}\n`;
   }
 
   return worthClicking
@@ -65,7 +89,7 @@ function renderWorthClicking(worthClicking: RunSummary['worthClicking']): string
  */
 function renderVoices(voices: RunSummary['voices']): string {
   if (voices.length === 0) {
-    return '_No standout voices this run._\n';
+    return `${PLACEHOLDER_NO_VOICES}\n`;
   }
 
   return voices
@@ -81,7 +105,7 @@ function renderVoices(voices: RunSummary['voices']): string {
  */
 function renderNoise(noise: RunSummary['noise']): string {
   if (noise.count === 0) {
-    return 'No noise flagged.\n';
+    return `${PLACEHOLDER_NO_NOISE}\n`;
   }
 
   if (noise.examples.length === 0) {
@@ -98,8 +122,8 @@ function renderNoise(noise: RunSummary['noise']): string {
  */
 export function renderSummaryMarkdown(summary: RunSummary, context: MarkdownContext): string {
   // Validate schemaVersion
-  if (summary.schemaVersion !== 1) {
-    throw new Error(`markdown_writer: unsupported schemaVersion ${summary.schemaVersion}, expected 1`);
+  if (summary.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(`markdown_writer: unsupported schemaVersion ${summary.schemaVersion}, expected ${SUPPORTED_SCHEMA_VERSION}`);
   }
 
   // Format header timestamp
@@ -119,25 +143,25 @@ export function renderSummaryMarkdown(summary: RunSummary, context: MarkdownCont
   );
 
   // Themes
-  lines.push('## Themes\n');
+  lines.push(`${HEADER_THEMES}\n`);
   lines.push(renderThemes(summary.themes));
 
   // Worth clicking
-  lines.push('## Worth clicking\n');
+  lines.push(`${HEADER_WORTH_CLICKING}\n`);
   lines.push(renderWorthClicking(summary.worthClicking));
 
   // Voices
-  lines.push('## Voices\n');
+  lines.push(`${HEADER_VOICES}\n`);
   lines.push(renderVoices(summary.voices));
 
   // Noise
-  lines.push('## Noise\n');
+  lines.push(`${HEADER_NOISE}\n`);
   lines.push(renderNoise(summary.noise));
 
   // Footer
   lines.push('---\n');
-  lines.push(`Raw posts: \`${rawPath}\`\n`);
-  lines.push(`Summary JSON: \`${summaryPath}\`\n`);
+  lines.push(`${FOOTER_RAW_POSTS} \`${rawPath}\`\n`);
+  lines.push(`${FOOTER_SUMMARY_JSON} \`${summaryPath}\`\n`);
 
   return lines.join('\n');
 }
@@ -156,7 +180,7 @@ export async function writeSummaryMarkdown(params: {
   const { runDir, summary, rawJsonPath, summaryJsonPath, displayRawJsonPath, displaySummaryJsonPath } = params;
 
   // Default summaryJsonPath if not provided
-  const effectiveSummaryJsonPath = summaryJsonPath || join(runDir, 'summary.json');
+  const effectiveSummaryJsonPath = summaryJsonPath || join(runDir, SUMMARY_JSON_FILENAME);
 
   // Build markdown context
   const context: MarkdownContext = {
@@ -173,8 +197,8 @@ export async function writeSummaryMarkdown(params: {
   await mkdir(runDir, { recursive: true });
 
   // Write to tmpfile
-  const summaryMdPath = join(runDir, 'summary.md');
-  const tmpPath = join(runDir, 'summary.md.tmp');
+  const summaryMdPath = join(runDir, SUMMARY_MD_FILENAME);
+  const tmpPath = join(runDir, SUMMARY_MD_TMP_FILENAME);
 
   await writeFile(tmpPath, markdown, 'utf-8');
 

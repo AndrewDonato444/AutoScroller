@@ -92,6 +92,136 @@ async function writeSummaryErrorJson(
 }
 
 /**
+ * Write raw.json and update dedup cache.
+ * Returns the write result and dedup partition for further processing.
+ */
+async function writeRawJsonAndUpdateCache(params: {
+  outputDir: string;
+  stateDir: string;
+  runId: string;
+  posts: ExtractedPost[];
+  stats: any;
+  meta: any;
+}): Promise<{
+  writeResult: Awaited<ReturnType<typeof writeRawJson>>;
+  newPosts: ExtractedPost[];
+  seenPosts: ExtractedPost[];
+  summaryFragment: string;
+}> {
+  const { outputDir, stateDir, runId, posts, stats, meta } = params;
+
+  // Write raw.json
+  const writeResult = await writeRawJson({
+    outputDir,
+    runId,
+    posts,
+    stats,
+    meta,
+  });
+
+  // Update dedup cache
+  const { newPosts, seenPosts, summaryFragment } = await updateDedupCacheAndGetSummary(
+    posts,
+    stateDir,
+    writeResult.rawJsonPath
+  );
+
+  return { writeResult, newPosts, seenPosts, summaryFragment };
+}
+
+/**
+ * Run summarizer and handle success/error paths including markdown rendering.
+ * Returns { success: true, summaryLine } on success or { success: false, summaryLine } on failure.
+ */
+async function runSummarizerAndRenderMarkdown(params: {
+  posts: ExtractedPost[];
+  newPosts: ExtractedPost[];
+  config: Config;
+  runId: string;
+  runDir: string;
+  rawJsonPath: string;
+  endedAt: Date;
+  summaryLine: string;
+}): Promise<{ success: boolean; summaryLine: string; errorDetail?: string }> {
+  const { posts, newPosts, config, runId, runDir, rawJsonPath, endedAt, summaryLine } = params;
+
+  // Load themes store to get prior themes
+  const themesStore = await loadThemesStore(config.output.state);
+  const priorThemes = recentThemes(themesStore);
+
+  // Build summarizer input
+  const summarizerInput: SummarizerInput = {
+    posts,
+    newPostIds: newPosts.map(p => p.id),
+    priorThemes,
+    interests: config.interests,
+    runId,
+    model: config.claude.model,
+    apiKey: config.claude.apiKey || '',
+  };
+
+  // Call summarizer
+  const summarizerResult = await summarizeRun(summarizerInput);
+
+  if (summarizerResult.status === 'ok') {
+    // Write summary.json
+    const summaryJsonPath = join(runDir, 'summary.json');
+    await writeSummaryJson(runDir, summarizerResult.summary);
+
+    // Update themes store
+    const updatedStore = appendRun(themesStore, {
+      runId,
+      endedAt: endedAt.toISOString(),
+      themes: summarizerResult.summary.themes,
+    });
+    await saveThemesStore(updatedStore, config.output.state);
+
+    // Update summary line
+    const themeCount = summarizerResult.summary.themes.length;
+    const worthClickingCount = summarizerResult.summary.worthClicking.length;
+    let updatedSummaryLine = summaryLine.replace(
+      / — saved to .*$/,
+      ` — summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — saved to ${formatDisplayPath(rawJsonPath)}`
+    );
+
+    // Write markdown summary
+    try {
+      const mdResult = await writeSummaryMarkdown({
+        runDir,
+        summary: summarizerResult.summary,
+        rawJsonPath,
+        summaryJsonPath,
+        displayRawJsonPath: formatDisplayPath(rawJsonPath),
+        displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
+      });
+
+      // Append markdown path to summary line
+      updatedSummaryLine += ` — rendered to ${formatDisplayPath(mdResult.summaryMdPath)}`;
+
+      return { success: true, summaryLine: updatedSummaryLine };
+    } catch (mdError: any) {
+      // Markdown render failed - summary.json and raw.json stay intact
+      return {
+        success: false,
+        summaryLine: updatedSummaryLine,
+        errorDetail: `markdown render failed: ${mdError.message}`,
+      };
+    }
+  } else {
+    // Summarizer failed - write error file
+    await writeSummaryErrorJson(runDir, runId, summarizerResult.reason, summarizerResult.rawResponse);
+
+    // Update summary line
+    const updatedSummaryLine = summaryLine.replace(
+      / — saved to .*$/,
+      ` — summarizer failed: ${summarizerResult.reason} — saved to ${formatDisplayPath(rawJsonPath)}`
+    );
+
+    return { success: false, summaryLine: updatedSummaryLine };
+  }
+}
+
+/**
  * Handle the scroll command.
  *
  * Launches the persistent Chromium context and scrolls x.com/home
@@ -150,8 +280,10 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
       try {
         const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
         const posts = extractor.getPosts();
-        const writeResult = await writeRawJson({
+
+        const { summaryFragment } = await writeRawJsonAndUpdateCache({
           outputDir: config.output.dir,
+          stateDir: config.output.state,
           runId,
           posts,
           stats,
@@ -165,19 +297,14 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
           },
         });
 
-        // Update dedup cache (browser closed with recovered posts)
-        try {
-          const { summaryFragment } = await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
-          summaryLine += summaryFragment;
-        } catch (cacheError: any) {
-          // Dedup cache failure is non-fatal
-          const displayPath = formatDisplayPath(writeResult.rawJsonPath);
-          summaryLine += ` — saved to ${displayPath}`;
+        summaryLine += summaryFragment;
+      } catch (error: any) {
+        // Handle both write failures and cache failures
+        if (error.message.includes('dedup cache')) {
           console.log(summaryLine);
-          console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);
+          console.log(`dedup cache failed: ${error.message} (next run will re-count some posts as new)`);
           process.exit(EXIT_ERROR);
         }
-      } catch (error: any) {
         summaryLine += ` — write failed: ${error.message}`;
       }
     }
@@ -197,32 +324,32 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     try {
       const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
       const posts = extractor.getPosts();
-      const writeResult = await writeRawJson({
-        outputDir: config.output.dir,
-        runId,
-        posts,
-        stats,
-        meta: {
-          startedAt: startedAt.toISOString(),
-          endedAt: endedAt.toISOString(),
-          elapsedMs: result.elapsedMs,
-          tickCount: result.tickCount,
-          minutes: effectiveMinutes,
-          dryRun: isDryRun,
-        },
-      });
 
-      // Update dedup cache after successful raw.json write
+      // Write raw.json and update dedup cache
       let newPosts: ExtractedPost[];
+      let writeResult: Awaited<ReturnType<typeof writeRawJson>>;
 
       try {
-        const dedupResult = await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
-        newPosts = dedupResult.newPosts;
-        summaryLine += dedupResult.summaryFragment;
+        const writeAndCacheResult = await writeRawJsonAndUpdateCache({
+          outputDir: config.output.dir,
+          stateDir: config.output.state,
+          runId,
+          posts,
+          stats,
+          meta: {
+            startedAt: startedAt.toISOString(),
+            endedAt: endedAt.toISOString(),
+            elapsedMs: result.elapsedMs,
+            tickCount: result.tickCount,
+            minutes: effectiveMinutes,
+            dryRun: isDryRun,
+          },
+        });
+        newPosts = writeAndCacheResult.newPosts;
+        writeResult = writeAndCacheResult.writeResult;
+        summaryLine += writeAndCacheResult.summaryFragment;
       } catch (cacheError: any) {
         // Dedup cache failure is non-fatal - the raw.json is safe
-        const displayPath = formatDisplayPath(writeResult.rawJsonPath);
-        summaryLine += ` — saved to ${displayPath}`;
         console.log(summaryLine);
         console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);
         process.exit(EXIT_SUCCESS);
@@ -230,81 +357,29 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
       // Run summarizer after successful dedup cache update
       try {
-        // Load themes store to get prior themes
-        const themesStore = await loadThemesStore(config.output.state);
-        const priorThemes = recentThemes(themesStore);
-
-        // Build summarizer input
-        const summarizerInput: SummarizerInput = {
+        const summarizerResult = await runSummarizerAndRenderMarkdown({
           posts,
-          newPostIds: newPosts.map(p => p.id),
-          priorThemes,
-          interests: config.interests,
+          newPosts,
+          config,
           runId,
-          model: config.claude.model,
-          apiKey: config.claude.apiKey || '',
-        };
+          runDir: writeResult.runDir,
+          rawJsonPath: writeResult.rawJsonPath,
+          endedAt,
+          summaryLine,
+        });
 
-        // Call summarizer
-        const summarizerResult = await summarizeRun(summarizerInput);
-
-        if (summarizerResult.status === 'ok') {
-          // Write summary.json
-          const summaryJsonPath = join(writeResult.runDir, 'summary.json');
-          await writeSummaryJson(writeResult.runDir, summarizerResult.summary);
-
-          // Update themes store
-          const updatedStore = appendRun(themesStore, {
-            runId,
-            endedAt: endedAt.toISOString(),
-            themes: summarizerResult.summary.themes,
-          });
-          await saveThemesStore(updatedStore, config.output.state);
-
-          // Update summary line
-          const themeCount = summarizerResult.summary.themes.length;
-          const worthClickingCount = summarizerResult.summary.worthClicking.length;
-          summaryLine = summaryLine.replace(/ — saved to .*$/, ` — summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — saved to ${formatDisplayPath(writeResult.rawJsonPath)}`);
-
-          // Write markdown summary
-          try {
-            const mdResult = await writeSummaryMarkdown({
-              runDir: writeResult.runDir,
-              summary: summarizerResult.summary,
-              rawJsonPath: writeResult.rawJsonPath,
-              summaryJsonPath,
-              displayRawJsonPath: formatDisplayPath(writeResult.rawJsonPath),
-              displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
-            });
-
-            // Append markdown path to summary line
-            summaryLine += ` — rendered to ${formatDisplayPath(mdResult.summaryMdPath)}`;
-
-            console.log(summaryLine);
-            process.exit(EXIT_SUCCESS);
-          } catch (mdError: any) {
-            // Markdown render failed - summary.json and raw.json stay intact
-            console.log(summaryLine);
-            console.log(`markdown render failed: ${mdError.message}`);
-            process.exit(EXIT_ERROR);
-          }
+        if (summarizerResult.success) {
+          console.log(summarizerResult.summaryLine);
+          process.exit(EXIT_SUCCESS);
         } else {
-          // Summarizer failed - write error file
-          await writeSummaryErrorJson(
-            writeResult.runDir,
-            runId,
-            summarizerResult.reason,
-            summarizerResult.rawResponse
-          );
-
-          // Update summary line
-          summaryLine = summaryLine.replace(/ — saved to .*$/, ` — summarizer failed: ${summarizerResult.reason} — saved to ${formatDisplayPath(writeResult.rawJsonPath)}`);
-
-          console.log(summaryLine);
+          console.log(summarizerResult.summaryLine);
+          if (summarizerResult.errorDetail) {
+            console.log(summarizerResult.errorDetail);
+          }
           process.exit(EXIT_ERROR);
         }
       } catch (summarizerError: any) {
-        // Unexpected summarizer error (should not happen due to typed results, but handle it)
+        // Unexpected summarizer error
         console.log(summaryLine);
         console.log(`summarizer error: ${summarizerError.message}`);
         process.exit(EXIT_ERROR);
