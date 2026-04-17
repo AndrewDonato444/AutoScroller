@@ -270,12 +270,17 @@ claude:
   });
 
   describe('UT-CLI-010: pnpm login routes to login handler', () => {
-    it('should invoke login handler stub', async () => {
+    it('should invoke login handler and print instruction', async () => {
+      // Write valid config with headless: false
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      // Run login command - it will launch browser and wait
+      // We expect it to print the instruction before waiting
       const result = await runCli(['login']);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('login');
-      expect(result.stdout).toMatch(/not yet wired.*feature 4/i);
+      // Should print instruction (even if process times out waiting for browser)
+      expect(result.stdout).toContain('log in to X');
     });
   });
 
