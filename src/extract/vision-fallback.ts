@@ -249,7 +249,7 @@ export function createVisionFallback(config: VisionFallbackConfig): VisionFallba
   }
 
   async function rescue(params: RescueParams): Promise<RescueResult> {
-    const { runId, screenshotDir, existingPosts, existingStats, anthropicClient } = params;
+    const { screenshotDir, existingPosts, anthropicClient } = params;
 
     // Initialize vision stats
     const visionStats: VisionStats = {
