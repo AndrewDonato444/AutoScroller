@@ -15,6 +15,11 @@ export const THEMES_SCHEMA_VERSION = 1;
 export const MAX_RUNS = 10;
 
 /**
+ * Filename for the rolling themes store.
+ */
+const THEMES_FILENAME = 'rolling-themes.json';
+
+/**
  * Themes extracted from a single run.
  */
 export interface RunThemes {
@@ -33,17 +38,17 @@ export interface ThemesStore {
 }
 
 /**
- * Quarantine a corrupt themes file and log the action.
+ * Quarantine a corrupt themes file by renaming it.
+ * Returns the epoch timestamp used in the quarantined filename.
  */
-async function quarantineCorruptThemesFile(
+async function quarantineCorruptFile(
   themesPath: string,
-  resolvedStateDir: string,
-  logMessage: string
-): Promise<void> {
+  resolvedStateDir: string
+): Promise<number> {
   const epochMs = Date.now();
-  const corruptPath = join(resolvedStateDir, `rolling-themes.json.corrupt-${epochMs}`);
+  const corruptPath = join(resolvedStateDir, `${THEMES_FILENAME}.corrupt-${epochMs}`);
   await rename(themesPath, corruptPath);
-  console.log(logMessage);
+  return epochMs;
 }
 
 /**
@@ -57,7 +62,7 @@ async function quarantineCorruptThemesFile(
  */
 export async function loadThemesStore(stateDir: string): Promise<ThemesStore> {
   const resolvedStateDir = expandHomeDir(stateDir);
-  const themesPath = join(resolvedStateDir, 'rolling-themes.json');
+  const themesPath = join(resolvedStateDir, THEMES_FILENAME);
 
   try {
     const content = await readFile(themesPath, 'utf-8');
@@ -65,11 +70,8 @@ export async function loadThemesStore(stateDir: string): Promise<ThemesStore> {
 
     // Validate schema version
     if (parsed.schemaVersion !== THEMES_SCHEMA_VERSION) {
-      await quarantineCorruptThemesFile(
-        themesPath,
-        resolvedStateDir,
-        `rolling themes schema ${parsed.schemaVersion} not supported by this build; quarantined and started fresh`
-      );
+      await quarantineCorruptFile(themesPath, resolvedStateDir);
+      console.log(`rolling themes schema ${parsed.schemaVersion} not supported by this build; quarantined and started fresh`);
       return { schemaVersion: THEMES_SCHEMA_VERSION, runs: [] };
     }
 
@@ -87,12 +89,8 @@ export async function loadThemesStore(stateDir: string): Promise<ThemesStore> {
 
     // Corrupt file - quarantine and start fresh
     try {
-      const epochMs = Date.now();
-      await quarantineCorruptThemesFile(
-        themesPath,
-        resolvedStateDir,
-        `rolling themes corrupt; quarantined to rolling-themes.json.corrupt-${epochMs}, starting fresh`
-      );
+      const epochMs = await quarantineCorruptFile(themesPath, resolvedStateDir);
+      console.log(`rolling themes corrupt; quarantined to rolling-themes.json.corrupt-${epochMs}, starting fresh`);
     } catch {
       // If rename fails, just log and continue
       console.log('rolling themes corrupt; starting fresh');
@@ -113,8 +111,8 @@ export async function saveThemesStore(
   stateDir: string
 ): Promise<{ statePath: string }> {
   const resolvedStateDir = expandHomeDir(stateDir);
-  const themesPath = join(resolvedStateDir, 'rolling-themes.json');
-  const tmpPath = join(resolvedStateDir, 'rolling-themes.json.tmp');
+  const themesPath = join(resolvedStateDir, THEMES_FILENAME);
+  const tmpPath = join(resolvedStateDir, `${THEMES_FILENAME}.tmp`);
 
   // Create state directory if it doesn't exist
   await mkdir(resolvedStateDir, { recursive: true });
