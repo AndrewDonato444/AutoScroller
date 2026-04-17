@@ -109,7 +109,6 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
     jitterMs,
     longPauseEvery,
     longPauseMs,
-    dryRun,
     onTick,
     rng = Math.random,
   } = options;
