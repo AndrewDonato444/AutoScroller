@@ -337,4 +337,44 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound after implementation -->
+### Atomic File Write Pattern
+
+**Decision**: Use tmpfile → rename instead of explicit fsync for atomic writes.
+
+**Why**: POSIX `rename()` is atomic by spec — if the process crashes between `writeFile(tmpfile)` and `rename(tmpfile, final)`, the tmpfile remains but the final file never appears (or remains at its previous state). This prevents partial writes without requiring explicit `fsync()`, which adds complexity and platform-specific behavior (macOS vs Linux fsync semantics differ). The simpler pattern is sufficient for this use case.
+
+**Code**: `writeFile(raw.json.tmp) → rename(raw.json.tmp, raw.json)`
+
+**Testing**: Tests verify tmpfile is cleaned up after successful rename (atomic write leaves no tmpfile behind). Tests don't mock filesystem — use real temp directories with timestamped names to avoid conflicts.
+
+### Run ID Generation Timing
+
+**Decision**: Generate run ID at CLI start (in `handleScroll`), not inside `writeRawJson`.
+
+**Why**: The run ID becomes the directory name (`~/scrollproxy/runs/<runId>/`), and the `startedAt` timestamp in the JSON payload must agree with the directory name. If the writer generated the run ID, the directory name would be based on `endedAt` (when the write happens), not `startedAt` (when the scroll began). By generating once at scroll start and passing it through, `startedAt` and the directory name are guaranteed to match.
+
+**Anti-pattern avoided**: Generating the run ID inside the writer would require passing `startedAt` separately and reconstructing the run ID from it, or accepting that directory names and JSON timestamps don't align.
+
+### Stable JSON Key Order
+
+**Decision**: Write JSON payload with explicit key order (schemaVersion, runId, startedAt, endedAt, ..., posts).
+
+**Why**: `git diff` and `jq` output are easier to read when object keys appear in a predictable order. TypeScript object literals preserve insertion order, so defining the payload object with keys in the desired order guarantees the JSON output is stable. This matters for operator workflows: `jq .` shows the same structure every time, and diffs show semantic changes (not key reordering noise).
+
+**Code**: Payload object is assembled with keys in fixed order, then `JSON.stringify(payload, null, 2)` preserves that order.
+
+### Tilde Expansion for Display
+
+**Decision**: Replace expanded absolute path with tilde notation for display (`~/scrollproxy/runs/...` not `/Users/andrew/scrollproxy/runs/...`).
+
+**Why**: Terminal output should match the vocabulary in config files and fit on one line. The operator configures `output.dir: ~/scrollproxy/runs` in config.yaml, so the summary line should show `~/scrollproxy/runs/<runId>/raw.json` (what they typed), not the expanded absolute path (which can be 60+ characters and hard to read at a glance).
+
+**Code**: `writeResult.rawJsonPath.replace(expandHomeDir('~'), '~')` converts absolute back to tilde notation before printing.
+
+### Error Handling Layering
+
+**Pattern**: Writer throws on failure, CLI catches and formats for the operator.
+
+**Why**: The writer is a focused utility — it either succeeds and returns paths, or throws an error. The CLI scroll handler knows the operator's context (what command they ran, what they expect to see) and can format the error appropriately: `scroll complete: ... — write failed: <reason>`. This keeps error formatting logic in one place (the CLI layer) instead of spreading it across utilities.
+
+**Code**: Writer uses `await writeFile(...)` and `await rename(...)` without try-catch. CLI wraps `await writeRawJson(...)` in try-catch and appends `— write failed: ${error.message}` to the summary line.

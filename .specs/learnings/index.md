@@ -19,6 +19,33 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-16: Raw JSON Writer
+
+**Atomic File Writes:**
+- tmpfile → rename pattern (POSIX rename atomicity) is sufficient for crash-safe writes
+- Simpler than explicit fsync and avoids platform-specific semantics
+- Test by verifying tmpfile cleanup after successful write
+
+**ID Generation Timing:**
+- Generate time-based IDs at flow start, not when first needed
+- Ensures run directory name and JSON payload timestamps agree
+- Anti-pattern: generating ID at write time ties it to end-of-flow, not start
+
+**Error Handling Layering:**
+- Workers (utilities) throw on failure
+- Orchestrators (CLI handlers) catch and format for user context
+- Keeps error messaging in one place instead of spread across utilities
+
+**Testing Patterns:**
+- Use timestamped temp directories to avoid test conflicts
+- Verify structure with JSON.parse, not string matching
+- Test read-only behavior with deep copy comparison
+
+**Spec Drift:**
+- Forward-looking specs (describing ideal patterns like explicit fsync) vs simpler actual implementation
+- Update spec to match reality when simpler approach still meets requirements
+- Root cause: specs anticipate best practices, implementation discovers what's sufficient
+
 ### 2026-04-16: Extractor
 
 **TypeScript:**

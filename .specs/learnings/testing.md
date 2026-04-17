@@ -123,6 +123,22 @@ afterEach(() => {
 
 **Why:** Prevents tests from interfering with each other or the developer's real config files. The timestamp ensures parallel test runs don't collide.
 
+**Atomic write verification:** For features that write files atomically (tmpfile → rename), verify the tmpfile is cleaned up after a successful write:
+
+```typescript
+it('should clean up tmpfile after atomic write', async () => {
+  await writeRawJson({ outputDir: testDir, runId, posts, stats, meta });
+  
+  const tmpPath = join(testDir, runId, 'raw.json.tmp');
+  expect(existsSync(tmpPath)).toBe(false);  // tmpfile cleaned up
+  
+  const finalPath = join(testDir, runId, 'raw.json');
+  expect(existsSync(finalPath)).toBe(true);  // final file exists
+});
+```
+
+This proves the atomic write completed successfully (rename succeeded).
+
 ### No Mocking of Core Libraries in Integration Tests
 
 For config loading, extractor logic, or other integration tests, use real libraries (yaml, zod) instead of mocks:
@@ -137,6 +153,21 @@ vi.mock('yaml', () => ({ parse: vi.fn() }));
 ```
 
 **Why:** Integration tests verify that your code works with the real library APIs. Mocking defeats this purpose. Unit tests are for isolated logic; integration tests prove the wiring works.
+
+**JSON structure verification:** Use `JSON.parse()` to verify structure instead of string matching:
+
+```typescript
+// GOOD: Parse and verify structure
+const content = readFileSync(rawJsonPath, 'utf-8');
+const payload = JSON.parse(content);
+expect(payload.schemaVersion).toBe(1);
+expect(payload.posts.length).toBe(84);
+
+// BAD: String matching on JSON
+expect(content).toContain('"schemaVersion": 1');
+```
+
+**Why:** String matching is brittle (whitespace, key order). Parsing proves the JSON is valid and gives type-safe access to fields.
 
 ### Async Test Assertions Require Error Objects
 
@@ -283,3 +314,32 @@ Then after each wheel tick (and before the tick's post-tick pause),
 **Why:** "After X and Y" is ambiguous when Y is a duration. Does the callback fire after Y completes, or before Y starts? Async operations with multiple steps (action → callback → delay) need explicit sequencing in specs, or implementation will make an arbitrary choice that may not match spec intent.
 
 **When to apply:** Any time a callback fires in a multi-step async flow (network request → callback → retry, scroll → callback → pause, save → callback → cleanup), document the exact sequence. Don't rely on "and" to imply order.
+
+---
+
+## Testing Read-Only Behavior
+
+### Deep Copy Comparison for Non-Mutating Functions
+
+When testing that a function doesn't mutate its inputs, use deep copy comparison:
+
+```typescript
+it('should not mutate input arrays', () => {
+  const posts = [{ id: '123', text: 'hello' }];
+  const stats = { postsExtracted: 1, adsSkipped: 0, selectorFailures: [], duplicateHits: 0 };
+  
+  // Deep copy before calling
+  const postsCopy = JSON.parse(JSON.stringify(posts));
+  const statsCopy = JSON.parse(JSON.stringify(stats));
+  
+  await writeRawJson({ posts, stats, ... });
+  
+  // Verify no mutation
+  expect(posts).toEqual(postsCopy);
+  expect(stats).toEqual(statsCopy);
+});
+```
+
+**Why:** Proves the function is read-only. Reference checks (`Object.is`) would catch reassignment but not mutation of nested properties. Deep copy + equality check catches both.
+
+**When to apply:** Functions that receive complex objects (posts arrays, stats objects) and must not modify them. Especially important for writer/serializer functions that should be pure readers.

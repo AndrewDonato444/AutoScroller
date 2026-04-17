@@ -484,6 +484,67 @@ await page.goto(X_LOGIN_URL);
 
 **Why:** If the URL changes (e.g., X rebrands again), it's updated in one place. The constant name documents what the URL is for.
 
+### Atomic File Write Pattern
+
+**Pattern:** Use tmpfile → rename for crash-safe writes instead of explicit fsync.
+
+```typescript
+const tmpPath = rawJsonPath + '.tmp';
+
+// Write to tmpfile first
+await writeFile(tmpPath, jsonContent, 'utf-8');
+
+// Rename to final location (atomic on POSIX)
+await rename(tmpPath, rawJsonPath);
+```
+
+**Why:** POSIX `rename()` is atomic by spec — either the new file appears completely or the old file remains unchanged. If the process crashes between `writeFile` and `rename`, the tmpfile remains but the final file is never corrupted. This is simpler than explicit `fsync()` (which has platform-specific semantics) and sufficient for preventing partial writes.
+
+**When to apply:** Any file that must never appear in a partial state (config files, cache files, run artifacts that downstream tools will consume).
+
+### Generate IDs Early in the Flow
+
+**Pattern:** Generate time-based IDs at the start of a flow, not when they're first needed.
+
+```typescript
+// CLI handler (start of flow)
+const startedAt = new Date();
+const runId = generateRunId(startedAt);
+
+// Later, writer uses the pre-generated ID
+await writeRawJson({ runId, ... });
+```
+
+**Why:** If the ID is based on a timestamp and used in multiple places (directory name, JSON payload), generating it once ensures all uses agree. Generating it late (e.g., in the writer) would tie the ID to when the write happens, not when the flow started, causing misalignment.
+
+**When to apply:** Run IDs, session IDs, request IDs — anything that needs to be consistent across multiple operations in a flow.
+
+### Error Handling Layering
+
+**Pattern:** Workers throw, orchestrators catch and format.
+
+```typescript
+// Worker (utility layer)
+export async function writeRawJson(params) {
+  await writeFile(tmpPath, content);  // Throws on failure
+  await rename(tmpPath, finalPath);   // Throws on failure
+  return { runDir, rawJsonPath };
+}
+
+// Orchestrator (CLI layer)
+try {
+  const result = await writeRawJson({ ... });
+  console.log(`saved to ${result.rawJsonPath}`);
+} catch (error) {
+  console.log(`write failed: ${error.message}`);
+  process.exit(1);
+}
+```
+
+**Why:** Keeps error formatting in one place (the layer that knows the user's context) instead of spreading it across utilities. The worker focuses on the operation; the orchestrator decides how to present failures to the user.
+
+**When to apply:** Any utility function called from a CLI handler or orchestrator. Let low-level functions throw; catch and format at the layer that has user context.
+
 ---
 
 ## Spec Maintenance
@@ -593,3 +654,17 @@ And if `onTick` throws, the error is logged as `tick <N> hook error: <message>`
 **Learning:** When drift-checking, look for hypothetical names in specs (especially in "constants at the top of the file" scenarios). If the spec lists specific identifiers, verify they actually exist in the code. Update the spec to match reality rather than expecting implementation to match hypothetical names.
 
 **When to apply:** Any spec scenario that enumerates specific identifiers (constant names, function names, type names) should be verified against actual code during drift-check and updated if they differ.
+
+### Spec Drift: Forward-Looking Specs vs Simpler Implementation
+
+**Problem:** Spec described an idealized implementation with explicit `fsync()` for atomicity, but the actual implementation used a simpler `writeFile + rename` pattern that's sufficient on POSIX filesystems.
+
+**Why drift happened:** When writing specs before implementation, it's natural to anticipate best-practice patterns (like explicit fsync for durability). During implementation, discovering that POSIX `rename()` atomicity is sufficient leads to a simpler solution. The spec wasn't updated when the simpler approach was chosen.
+
+**How to reconcile:** Update the spec to describe the actual implementation pattern, with a note explaining why it's sufficient (e.g., "POSIX rename atomicity prevents partial writes; explicit fsync not needed"). Don't create unnecessary complexity in code just to match a forward-looking spec.
+
+**Root cause:** Specs are planning documents, not contracts. If implementation finds a simpler path that still meets all Gherkin scenarios (atomic writes, crash safety), the spec should be updated to match reality.
+
+**Learning:** When drift-checking, look for implementation details in specs (especially in "how it works" scenarios). If the spec describes a technique that wasn't actually used, verify the actual approach still meets the requirement, then update the spec to document what was built.
+
+**When to apply:** Any spec scenario that describes implementation techniques (fsync, transactions, locks, caching strategies) rather than behavioral outcomes. Verify the code uses those techniques or update the spec to describe the actual approach.
