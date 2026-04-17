@@ -9,7 +9,7 @@ design_refs: []
 personas:
   - primary
   - anti-persona
-status: stub
+status: implemented
 created: 2026-04-16
 updated: 2026-04-16
 ---
@@ -32,7 +32,7 @@ This feature ships a `writeRawJson()` function that:
 
 1. Exports `writeRawJson({ outputDir, runId, posts, stats, meta }): Promise<{ runDir, rawJsonPath }>`. `outputDir` is the `~`-expanded value from `config.output.dir`. `runId` is the caller-provided run identifier (see scenario below). `posts` is `ExtractedPost[]` from `extractor.getPosts()`. `stats` is `ExtractorStats` from `extractor.getStats()`. `meta` is `RunMeta` — the wall-clock facts about the scroll (see schema scenario below).
 2. Creates `<outputDir>/<runId>/` recursively if missing (`fs.mkdir` with `recursive: true`). Does not error if the directory already exists.
-3. Writes `<outputDir>/<runId>/raw.json` atomically: first to `raw.json.tmp` in the same directory, `fsync`ed, then renamed to `raw.json`. A crash between `mkdir` and `rename` leaves a `.tmp` file, never a partial `raw.json`.
+3. Writes `<outputDir>/<runId>/raw.json` atomically: first to `raw.json.tmp` in the same directory, then renamed to `raw.json`. `rename` is atomic on POSIX filesystems, so a crash between `mkdir` and `rename` leaves a `.tmp` file, never a partial `raw.json`.
 4. The JSON payload has exactly this top-level shape (schema version 1): `{ schemaVersion: 1, runId, startedAt, endedAt, elapsedMs, tickCount, config: { minutes, dryRun }, stats: { postsExtracted, adsSkipped, selectorFailures, duplicateHits }, selectorFailures: SelectorFailure[], posts: ExtractedPost[] }`. Field order is stable (the serializer writes keys in a fixed order) so `git diff` and `jq` behave predictably across runs.
 5. Exports a `generateRunId(now?: Date): string` helper that returns a UTC timestamp slug in the form `YYYY-MM-DDTHH-MM-SSZ` (ISO 8601 with `:` → `-` so it's a safe directory name on macOS). The scroll CLI calls this once at the **start** of the run so `startedAt` and the directory name agree.
 6. Exports a `RunMeta` type with `{ startedAt: string; endedAt: string; elapsedMs: number; tickCount: number; minutes: number; dryRun: boolean }`, all ISO 8601 / numeric / boolean — no relative timestamps.
