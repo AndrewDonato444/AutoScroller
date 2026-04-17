@@ -276,6 +276,18 @@ it('should exit 2 when headless is true', async () => {
 
 **Why:** Without proper config, tests can hang waiting for browser input. The login command validates headless early and exits, but tests need to set up config correctly or they'll timeout. Short timeouts on early-exit tests help catch config issues.
 
+### Scaffold Tests Verify Project Conventions
+
+Scaffold tests (like UT-004) verify project-wide conventions such as:
+- `.gitkeep` files exist in all module directories (`src/state/`, `src/writer/`, `src/config/`)
+- Module directories maintain `.gitkeep` even after they contain real implementation files
+
+**Gotcha:** When implementing a new module directory, remember to add `.gitkeep` to satisfy scaffold tests. The pattern isn't "remove .gitkeep when adding real files" — it's "all module directories have .gitkeep, always."
+
+**Why this pattern exists:** Consistency across module structure. Tests enforce this so the directory layout remains predictable.
+
+**When to apply:** Any time you create a new first-class module directory (like `src/state/` for the dedup cache), add a `.gitkeep` file immediately, before or alongside the first real implementation file.
+
 ### Test Duplication for Self-Containment
 
 Duplicating test helpers (like `runCli`) and config fixtures across test files is acceptable:

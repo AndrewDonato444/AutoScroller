@@ -372,4 +372,31 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound after implementation. -->
+### Project-Specific Conventions
+
+**.gitkeep in module directories:** This project maintains `.gitkeep` files in all module directories (`src/state/`, `src/writer/`, `src/config/`) even after they contain real implementation files. This is intentional — the scaffold tests verify these files exist. When implementing a new module, remember to add the `.gitkeep` file to satisfy test UT-004.
+
+**Why:** Consistency with the existing module structure. All first-class module directories have `.gitkeep` files regardless of whether they contain other files.
+
+### Implementation Choices
+
+**No trailing newline on state files:** The dedup cache's `saveDedupCache` writes `JSON.stringify(payload, null, 2)` without appending `\n`, unlike the raw-json writer (feature 7) which does `JSON.stringify(...) + '\n'`. This is intentional — the state file doesn't need the trailing newline that makes raw.json easier to `cat` and pipe through jq, since state files are internal plumbing not user-inspected artifacts.
+
+**Root cause of original drift:** The spec described using the "same atomic-write pattern as feature 7" and initially assumed all stylistic choices (including trailing newline) would transfer. During implementation, only the atomic write pattern (`tmpfile → rename`) was copied; the trailing newline was not. The spec was updated to reflect this intentional difference.
+
+### Helper Extraction
+
+**Quarantine helper (2 occurrences):** Extracted `quarantineCorruptCache` helper to eliminate duplication — it appeared twice in `loadDedupCache` with different log messages (corruption vs schema mismatch). Extracting to a helper with a `logMessage` parameter eliminated ~8 lines of duplication.
+
+**Display path helper (4 occurrences):** Extracted `formatDisplayPath` helper in `scroll.ts` — the pattern `path.replace(expandHomeDir('~'), '~')` appeared 4 times. Single helper improves maintainability.
+
+**Update-and-summarize helper:** Extracted `updateDedupCacheAndGetSummary` to consolidate duplicate cache update logic that appeared in both the `browser_closed` and successful completion paths. Reduced duplication from ~15 lines × 2 to a single 8-line helper.
+
+### Refactoring Decisions
+
+**When NOT to extract:**
+- Error handling blocks with different exit codes (5 lines each, different control flow) — parameterizing would reduce clarity
+- Long sequential functions with clear phases (`handleScroll` at 136 lines) — extraction would harm readability of the flow
+- User-facing error messages — intentionally inline for context
+
+**Type safety improvement:** Replaced `any[]` with `ExtractedPost[]` for better type safety in function signatures.

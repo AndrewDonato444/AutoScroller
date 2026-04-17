@@ -423,6 +423,107 @@ await page.evaluate(({ metricPattern }) => {
 
 **When to apply:** Any regex used 2+ times, especially in browser context functions.
 
+### Extract Helper When Logic Appears Twice (If Messaging Differs)
+
+When the same logic appears twice with only messaging differences, extract to a helper with a message parameter:
+
+```typescript
+// BAD: Duplicated quarantine logic (~8 lines × 2)
+// In schema validation path:
+const epochMs = Date.now();
+const corruptPath = join(resolvedStateDir, `seen-posts.json.corrupt-${epochMs}`);
+await rename(cachePath, corruptPath);
+console.log(`dedup cache schema ${version} not supported; quarantined and started fresh`);
+
+// In corruption path:
+const epochMs = Date.now();
+const corruptPath = join(resolvedStateDir, `seen-posts.json.corrupt-${epochMs}`);
+await rename(cachePath, corruptPath);
+console.log(`dedup cache corrupt; quarantined to seen-posts.json.corrupt-${epochMs}, starting fresh`);
+
+// GOOD: Single helper with message parameter
+async function quarantineCorruptCache(
+  cachePath: string,
+  resolvedStateDir: string,
+  logMessage: string
+): Promise<void> {
+  const epochMs = Date.now();
+  const corruptPath = join(resolvedStateDir, `seen-posts.json.corrupt-${epochMs}`);
+  await rename(cachePath, corruptPath);
+  console.log(logMessage);
+}
+
+// Usage
+await quarantineCorruptCache(cachePath, resolvedStateDir, 
+  `dedup cache schema ${parsed.schemaVersion} not supported by this build; quarantined and started fresh`);
+
+await quarantineCorruptCache(cachePath, resolvedStateDir,
+  `dedup cache corrupt; quarantined to seen-posts.json.corrupt-${epochMs}, starting fresh`);
+```
+
+**Why:** Eliminates ~8 lines of duplication. Even when messages differ, the core operation (rename + log) is identical. Parameterizing the message keeps both call sites clear while ensuring the quarantine operation stays consistent.
+
+**When to apply:** When the same multi-line logic (4+ lines) appears twice with only string literals differing. If it appears 3+ times, extraction is mandatory (see next pattern).
+
+### Extract Display Formatting Helper (4+ Occurrences)
+
+When the same formatting pattern appears 4+ times, extract to a helper even if it's simple:
+
+```typescript
+// BAD: Duplicated display path formatting (4 occurrences in scroll.ts)
+const displayPath1 = rawJsonPath.replace(expandHomeDir('~'), '~');
+const displayPath2 = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+// ... 2 more times
+
+// GOOD: Single helper function
+function formatDisplayPath(path: string): string {
+  return path.replace(expandHomeDir('~'), '~');
+}
+
+// Usage
+const displayPath = formatDisplayPath(rawJsonPath);
+```
+
+**Why:** Even simple one-liners benefit from extraction at 4+ call sites. If the formatting rule changes (e.g., also abbreviate `/Users/username`), it's updated in one place. The helper name also documents the intent: "convert absolute paths back to tilde notation for user-friendly display."
+
+**When to apply:** Any formatting/transformation pattern used 4+ times, even if it's a single expression.
+
+### Extract Orchestration Helper to Consolidate Duplicate Update Logic
+
+When the same multi-step orchestration (load → transform → save → format) appears in multiple code paths, extract to a helper that returns the formatted result:
+
+```typescript
+// BAD: Duplicated cache update + summary formatting (appears in 2 paths: browser_closed, successful completion)
+const cache = await loadDedupCache(stateDir);
+const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
+const updatedCache = appendHashes(cache, newHashes);
+await saveDedupCache(updatedCache, stateDir);
+const displayPath = formatDisplayPath(rawJsonPath);
+summaryLine += ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+
+// GOOD: Single helper that orchestrates and returns summary fragment
+async function updateDedupCacheAndGetSummary(
+  posts: ExtractedPost[],
+  stateDir: string,
+  rawJsonPath: string
+): Promise<string> {
+  const cache = await loadDedupCache(stateDir);
+  const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
+  const updatedCache = appendHashes(cache, newHashes);
+  await saveDedupCache(updatedCache, stateDir);
+  
+  const displayPath = formatDisplayPath(rawJsonPath);
+  return ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+}
+
+// Usage
+summaryLine += await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
+```
+
+**Why:** The orchestration appears in both successful completion and browser-closed-with-partial-results paths. Extracting ensures both code paths stay synchronized — if we add a new step (e.g., log cache size), it happens in both places automatically. The helper also has clear single responsibility: "update cache and produce summary fragment."
+
+**When to apply:** Multi-step orchestration (3+ operations) that appears in 2+ code paths. If the steps must stay synchronized, extract even at 2 occurrences (don't wait for 3+).
+
 ### Extract Helper Functions to Consolidate Duplicated Logic
 
 When similar code blocks appear 3-4 times with only data differences, extract to a helper function:
@@ -654,6 +755,35 @@ And if `onTick` throws, the error is logged as `tick <N> hook error: <message>`
 **Learning:** When drift-checking, look for hypothetical names in specs (especially in "constants at the top of the file" scenarios). If the spec lists specific identifiers, verify they actually exist in the code. Update the spec to match reality rather than expecting implementation to match hypothetical names.
 
 **When to apply:** Any spec scenario that enumerates specific identifiers (constant names, function names, type names) should be verified against actual code during drift-check and updated if they differ.
+
+### Spec Drift: "Same Pattern as Feature X" Can Cause Incomplete Copying
+
+**Problem:** Spec stated "uses the same atomic-write pattern as feature 7" and described all stylistic details from feature 7 (2-space indentation, UTF-8, trailing newline). Implementation copied the atomic write pattern (`tmpfile → rename`) but NOT the trailing newline. Spec initially claimed both files have trailing newlines; code only added it to one.
+
+**Why drift happened:** When specs reference prior features with "same as feature X", it's natural to assume all aspects transfer. During implementation, only the core pattern (atomic write) was needed; the cosmetic detail (trailing newline) was intentionally skipped for the state file since it's internal plumbing, not a user-inspected artifact like `raw.json`.
+
+**How to reconcile:** Update the spec to explicitly enumerate what's shared vs what differs:
+
+```markdown
+### Scenario: Atomic save pattern (same as feature 7, but no trailing newline)
+
+...
+Then `saveDedupCache` writes using the same atomic-write pattern as feature 7
+  (tmpfile → rename for crash safety)
+And the payload is serialized with `JSON.stringify(payload, null, 2)`
+  (2-space indentation, UTF-8, no trailing newline)
+And unlike feature 7's raw.json, state files do NOT append '\n'
+  (state files are internal plumbing, not user-inspected artifacts)
+```
+
+**Root cause:** "Same as X" specs are underspecified. They assume readers will know which aspects to copy and which to adapt. Implementation makes judgment calls about what "same as" means, and those calls may differ from spec author's intent.
+
+**Learning:** When specs reference another feature's pattern, be explicit:
+1. What's shared (atomic write via tmpfile → rename)
+2. What's intentionally different (no trailing newline)
+3. Why the difference matters (internal vs user-facing files)
+
+**When to apply:** Any time a spec says "same as feature X", "mirrors feature Y's approach", or "uses the pattern from Z". List the shared elements explicitly and note any intentional differences.
 
 ### Spec Drift: Forward-Looking Specs vs Simpler Implementation
 

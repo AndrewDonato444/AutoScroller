@@ -19,6 +19,26 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: State Module (Dedup Cache)
+
+**Helper Extraction:**
+- Extract when logic appears twice with only messaging differences (quarantineCorruptCache helper)
+- Extract display formatting at 4+ occurrences (formatDisplayPath helper)
+- Extract orchestration helpers to consolidate duplicate update logic (updateDedupCacheAndGetSummary)
+
+**When NOT to Extract:**
+- Error handling blocks with different exit codes (parameterizing reduces clarity)
+- Long sequential functions with clear phases (extraction harms readability)
+
+**Testing:**
+- Scaffold tests verify `.gitkeep` files exist in all module directories, even after real code is added
+- When creating new module directories, add `.gitkeep` to satisfy scaffold tests
+
+**Spec Drift:**
+- "Same as feature X" can cause drift when only some pattern aspects are copied
+- Be explicit about what's shared vs different when referencing prior features
+- Root cause: Implementation makes judgment calls about what "same as" means
+
 ### 2026-04-16: Raw JSON Writer
 
 **Atomic File Writes:**
