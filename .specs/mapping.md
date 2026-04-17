@@ -27,6 +27,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | foundation | [Scroller](.specs/features/foundation/scroller.feature.md) | `src/scroll/scroller.ts` | tests/foundation/scroller.test.ts | - | implemented |
 | foundation | [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md) | `src/state/dedup-cache.ts` | tests/foundation/state-dedup-cache.test.ts | - | implemented |
 | foundation | [State Module (Rolling Themes Store)](.specs/features/foundation/state-rolling-themes.feature.md) | `src/state/rolling-themes.ts` | tests/foundation/state-rolling-themes.test.ts | - | implemented |
+| foundation | [Claude Summarizer](.specs/features/foundation/summarizer.feature.md) | `src/summarizer/summarizer.ts` | tests/foundation/summarizer.test.ts | - | stub |
 
 ---
 
@@ -34,11 +35,11 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 | Status | Count |
 |--------|-------|
-| stub | 0 |
+| stub | 1 |
 | specced | 0 |
 | tested | 0 |
 | implemented | 9 |
-| **Total** | **9** |
+| **Total** | **10** |
 
 ---
 
@@ -46,7 +47,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 ### Stub
 
-_None_
+- [Claude Summarizer](.specs/features/foundation/summarizer.feature.md)
 
 ### Specced
 

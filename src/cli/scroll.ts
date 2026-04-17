@@ -3,6 +3,10 @@ import { runScroll, expandHomeDir, type ScrollResult } from '../scroll/scroller.
 import { createExtractor, type ExtractedPost } from '../extract/extractor.js';
 import { writeRawJson, generateRunId } from '../writer/raw-json.js';
 import { loadDedupCache, saveDedupCache, partitionPosts, appendHashes } from '../state/dedup-cache.js';
+import { summarizeRun, type SummarizerInput } from '../summarizer/summarizer.js';
+import { loadThemesStore, saveThemesStore, appendRun, recentThemes } from '../state/rolling-themes.js';
+import { writeFile, rename, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 
 export interface ScrollFlags {
   minutes?: number;
@@ -22,21 +26,68 @@ function formatDisplayPath(path: string): string {
 
 /**
  * Update the dedup cache with new posts.
- * Returns a summary fragment with the new/seen counts and display path.
+ * Returns partition result for summarizer, and summary fragment.
  * Throws if cache update fails.
  */
 async function updateDedupCacheAndGetSummary(
   posts: ExtractedPost[],
   stateDir: string,
   rawJsonPath: string
-): Promise<string> {
+): Promise<{
+  newPosts: ExtractedPost[];
+  seenPosts: ExtractedPost[];
+  summaryFragment: string;
+}> {
   const cache = await loadDedupCache(stateDir);
   const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
   const updatedCache = appendHashes(cache, newHashes);
   await saveDedupCache(updatedCache, stateDir);
 
   const displayPath = formatDisplayPath(rawJsonPath);
-  return ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+  const summaryFragment = ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+
+  return { newPosts, seenPosts, summaryFragment };
+}
+
+/**
+ * Write summary.json atomically to the run directory.
+ */
+async function writeSummaryJson(runDir: string, summary: any): Promise<void> {
+  const summaryPath = join(runDir, 'summary.json');
+  const tmpPath = join(runDir, 'summary.json.tmp');
+
+  // Ensure run directory exists
+  await mkdir(runDir, { recursive: true });
+
+  // Write to tmpfile with stable key order
+  const content = JSON.stringify(summary, null, 2);
+  await writeFile(tmpPath, content, 'utf-8');
+
+  // Atomic rename
+  await rename(tmpPath, summaryPath);
+}
+
+/**
+ * Write summary.error.json to the run directory.
+ */
+async function writeSummaryErrorJson(
+  runDir: string,
+  runId: string,
+  reason: string,
+  rawResponse?: string
+): Promise<void> {
+  const errorPath = join(runDir, 'summary.error.json');
+
+  const errorData = {
+    schemaVersion: 1,
+    runId,
+    at: new Date().toISOString(),
+    reason,
+    ...(rawResponse && { rawResponse }),
+  };
+
+  const content = JSON.stringify(errorData, null, 2);
+  await writeFile(errorPath, content, 'utf-8');
 }
 
 /**
@@ -115,7 +166,8 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
         // Update dedup cache (browser closed with recovered posts)
         try {
-          summaryLine += await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
+          const { summaryFragment } = await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
+          summaryLine += summaryFragment;
         } catch (cacheError: any) {
           // Dedup cache failure is non-fatal
           const displayPath = formatDisplayPath(writeResult.rawJsonPath);
@@ -160,8 +212,12 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
       });
 
       // Update dedup cache after successful raw.json write
+      let newPosts: ExtractedPost[];
+
       try {
-        summaryLine += await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
+        const dedupResult = await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
+        newPosts = dedupResult.newPosts;
+        summaryLine += dedupResult.summaryFragment;
       } catch (cacheError: any) {
         // Dedup cache failure is non-fatal - the raw.json is safe
         const displayPath = formatDisplayPath(writeResult.rawJsonPath);
@@ -171,8 +227,66 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
         process.exit(EXIT_SUCCESS);
       }
 
-      console.log(summaryLine);
-      process.exit(EXIT_SUCCESS);
+      // Run summarizer after successful dedup cache update
+      try {
+        // Load themes store to get prior themes
+        const themesStore = await loadThemesStore(config.output.state);
+        const priorThemes = recentThemes(themesStore);
+
+        // Build summarizer input
+        const summarizerInput: SummarizerInput = {
+          posts,
+          newPostIds: newPosts.map(p => p.id),
+          priorThemes,
+          interests: config.interests,
+          runId,
+          model: config.claude.model,
+          apiKey: config.claude.apiKey || '',
+        };
+
+        // Call summarizer
+        const summarizerResult = await summarizeRun(summarizerInput);
+
+        if (summarizerResult.status === 'ok') {
+          // Write summary.json
+          await writeSummaryJson(writeResult.runDir, summarizerResult.summary);
+
+          // Update themes store
+          const updatedStore = appendRun(themesStore, {
+            runId,
+            endedAt: endedAt.toISOString(),
+            themes: summarizerResult.summary.themes,
+          });
+          await saveThemesStore(updatedStore, config.output.state);
+
+          // Update summary line
+          const themeCount = summarizerResult.summary.themes.length;
+          const worthClickingCount = summarizerResult.summary.worthClicking.length;
+          summaryLine = summaryLine.replace(/ — saved to .*$/, ` — summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — saved to ${formatDisplayPath(writeResult.rawJsonPath)}`);
+
+          console.log(summaryLine);
+          process.exit(EXIT_SUCCESS);
+        } else {
+          // Summarizer failed - write error file
+          await writeSummaryErrorJson(
+            writeResult.runDir,
+            runId,
+            summarizerResult.reason,
+            summarizerResult.rawResponse
+          );
+
+          // Update summary line
+          summaryLine = summaryLine.replace(/ — saved to .*$/, ` — summarizer failed: ${summarizerResult.reason} — saved to ${formatDisplayPath(writeResult.rawJsonPath)}`);
+
+          console.log(summaryLine);
+          process.exit(EXIT_ERROR);
+        }
+      } catch (summarizerError: any) {
+        // Unexpected summarizer error (should not happen due to typed results, but handle it)
+        console.log(summaryLine);
+        console.log(`summarizer error: ${summarizerError.message}`);
+        process.exit(EXIT_ERROR);
+      }
     } catch (error: any) {
       summaryLine += ` — write failed: ${error.message}`;
       console.log(summaryLine);
