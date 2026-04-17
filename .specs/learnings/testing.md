@@ -359,6 +359,91 @@ it('renders worth-clicking with correct format', () => {
 
 **When to apply:** When you have complex data structures (summaries, configs, API responses) that need sensible defaults but vary per test. If 3+ tests construct similar objects, extract a helper.
 
+### CLI Routing Tests with --dry-run
+
+**Pattern:** When testing CLI routing (verifying that a command invokes the correct handler), use `--dry-run` flag to skip expensive operations while still exercising the real handler path.
+
+```typescript
+describe('UT-CLI-011: pnpm replay <run-id> routes to replay handler', () => {
+  it('should invoke replay handler with run-id', async () => {
+    // Write valid config
+    const configPath = join(testConfigDir, 'config.yaml');
+    writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+    // Create run directory with raw.json
+    setupTestRunDirectory('2026-04-16-0830');
+
+    // Use dry-run to avoid making actual API calls in this routing test
+    const result = await runCli(['replay', '2026-04-16-0830', '--dry-run']);
+
+    expect(result.exitCode).toBe(EXIT_SUCCESS);
+    expect(result.stdout).toContain('replay');
+    expect(result.stdout).toContain('2026-04-16-0830');
+    expect(result.stdout).toContain('dry-run');
+  });
+});
+```
+
+**Why:** Routing tests verify "does this command reach the right handler?" not "does the handler work correctly?" Using `--dry-run` keeps tests fast, avoids API costs, and doesn't require mocking. The handler's own test suite validates its logic.
+
+**When to apply:** CLI entry tests that verify command routing, flag parsing, and dispatcher behavior. The handler's integration tests validate the actual work.
+
+### CLI Tests Need Full Fixture Setup
+
+**Gotcha:** Tests that invoke CLI commands which load handlers need to provide ALL runtime dependencies, even if they're not the focus of the test.
+
+**Example:** Replay CLI routing tests failed because the replay handler loads the themes store on startup, which requires the state directory to exist. The test was only trying to verify routing, but the real handler's initialization code ran anyway.
+
+**Solution:** Create helper functions that set up complete fixtures:
+
+```typescript
+/**
+ * Helper to set up a test run directory with raw.json
+ */
+function setupTestRunDirectory(runId: string, runsDir?: string): string {
+  const actualRunsDir = runsDir ?? join(testHomeDir, 'scrollproxy', 'runs');
+  const runDir = join(actualRunsDir, runId);
+  mkdirSync(runDir, { recursive: true });
+
+  // Create state directory for themes store (even though we're not testing it)
+  const stateDir = join(testHomeDir, 'scrollproxy', 'state');
+  mkdirSync(stateDir, { recursive: true });
+
+  // Create raw.json
+  const rawJson = createMinimalRawJson(runId);
+  writeFileSync(join(runDir, 'raw.json'), JSON.stringify(rawJson, null, 2), 'utf-8');
+
+  return runDir;
+}
+```
+
+**Why:** CLI handlers may load state, initialize caches, or validate directories on startup. Tests that invoke real handlers (not mocks) need to provide all dependencies or they'll fail with cryptic errors (missing directories, file not found).
+
+**When to apply:** Any CLI routing test that invokes real handlers. Use `--dry-run` to skip expensive operations, but still provide the fixtures needed for initialization.
+
+### Stale Test Expectations from Stub Implementations
+
+**Gotcha:** When implementing a feature that replaces a stub, old test expectations referencing stub messages ("not yet wired") become stale and cause failures.
+
+**Example:**
+```typescript
+// OLD expectation when replay was a stub:
+expect(result.stdout).toContain('not yet wired feature 14');
+
+// NEW expectation after feature implemented:
+expect(result.stdout).toContain('replay');
+expect(result.stdout).toContain('dry-run');
+```
+
+**Solution:** When replacing a stub with real implementation:
+1. Search test files for the stub's message string
+2. Update expectations to match the real handler's behavior
+3. Consider whether the test still makes sense (routing tests should remain, behavior tests may need rewrite)
+
+**Why:** Stubs print placeholder messages for testing the dispatcher. Real handlers print actual output. Forgetting to update test expectations causes confusing failures where the feature works but tests fail.
+
+**When to apply:** Every time you replace a stub function with a real implementation, grep the test directory for the stub's message string and update any assertions.
+
 ### Test Duplication for Self-Containment
 
 Duplicating test helpers (like `runCli`) and config fixtures across test files is acceptable:

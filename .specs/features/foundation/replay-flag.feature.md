@@ -4,6 +4,7 @@ domain: foundation
 source: src/cli/replay.ts
 tests:
   - tests/foundation/replay.test.ts
+  - tests/foundation/cli-entry.test.ts
 components: []
 design_refs: []
 personas:
@@ -317,5 +318,26 @@ Cumulative-intelligence integrity:
 - Dedup cache is NOT touched on replay. The posts in `raw.json` were already recorded; re-recording them would be a no-op at best (same hashes) or a correctness bug at worst if the cache's LRU window drifts.
 
 ## Learnings
+
+### CLI Test Fixtures Must Match Runtime Dependencies
+
+**Problem:** CLI entry tests for replay were failing with exit 1 because tests invoked the real replay handler but didn't set up the fixtures it needs (run directory with `raw.json`, state directory for themes store).
+
+**Solution:** Created `setupTestRunDirectory` helper that creates both the run directory with a minimal valid `raw.json` AND the state directory before invoking CLI commands. Used `--dry-run` flag to test CLI routing without making actual Claude API calls.
+
+**Why:** The replay handler loads the themes store on startup, which requires the state directory to exist. Tests that verify CLI routing (not just argument parsing) need to provide all dependencies the handler expects, even if they're not the focus of the test.
+
+**Pattern:** For CLI routing tests that invoke real handlers:
+1. Use `--dry-run` flag to skip expensive operations (API calls, writes)
+2. Create minimal fixtures for all runtime dependencies (directories, config files, data files)
+3. Extract fixture creation to helpers when duplication appears (~40 lines → `createMinimalRawJson`, `setupTestRunDirectory`)
+
+### Stale Test Expectations from Stub Implementations
+
+**Gotcha:** Test expectations at line 301 still referenced "not yet wired feature 14" from when replay was a stub. When the feature was implemented, the test expectation became stale and caused failures.
+
+**Solution:** Removed the stub message expectation and replaced with the actual handler's behavior (routing to replay with `--dry-run`).
+
+**When to apply:** When implementing a feature that replaces a stub, search test files for stub message strings and update expectations to match the real implementation's behavior.
 
 <!-- Updated via /compound -->

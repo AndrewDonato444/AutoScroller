@@ -480,6 +480,7 @@ console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
 - Contextual error messages that reference specific config fields — inline is clearer
 - Tightly coupled lifecycle management (try-catch-finally with promise resolution)
 - Extraction would require passing 6+ parameters — that's coupling, not clarity
+- Each usage needs different values that don't parameterize well (e.g., config YAML strings where each test needs different field values — extracting would require parameterizing every field, making call sites harder to read than inline YAML)
 
 **Why:** Extraction has a cost (indirection, naming, navigation). Only extract when the clarity or reuse benefit outweighs that cost. A 20-line decision tree that reads like prose doesn't need extraction. Contextual error messages benefit from being near the validation logic they describe.
 

@@ -19,6 +19,21 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: Replay Flag
+
+**CLI Test Patterns:**
+- Use `--dry-run` flag in routing tests to skip API calls while verifying handler is wired correctly
+- CLI tests that invoke real handlers need full fixture setup (run dir, raw.json, state dir) even when testing routing
+- Extract fixture helpers when duplication appears: `createMinimalRawJson` (~40 lines duplicated), `setupTestRunDirectory` (~20 lines)
+
+**Refactoring:**
+- Exit code constants (EXIT_SUCCESS, EXIT_ERROR, EXIT_USAGE_ERROR) replaced 15+ magic numbers for consistency
+- Don't extract config YAML when each test needs different values — parameterization adds complexity
+
+**Test Maintenance:**
+- Stale test expectations from stub implementations ("not yet wired") must be updated when feature is implemented
+- Grep test files for stub messages after replacing stubs with real handlers
+
 ### 2026-04-17: Markdown Writer
 
 **Pure Function Architecture:**
