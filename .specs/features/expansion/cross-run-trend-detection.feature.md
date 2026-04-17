@@ -69,7 +69,7 @@ This feature ships a `src/trends/trend-detector.ts` module that:
 11. Is wired into `src/writer/markdown.ts` as a new `## Trends` section that renders BETWEEN `## Themes` and `## Worth clicking`. The renderer:
     - Omits the section entirely if `summary.trends` is undefined (older `summary.json` files written before this feature shipped) OR if all three category arrays are empty (early-life store with <2 runs).
     - Renders each non-empty category as a bullet list with subtitles `### Persistent`, `### Emerging`, `### Fading` (h3, not h2 — the trends section is one section, not three).
-    - Persistent items render as `- {theme} — {runCount}/{windowSize} runs`.
+    - Persistent items render as `- {theme} — {runCount}/{windowSize} runs`, where `windowSize` is the highest `runCount` among persistent themes in this report (a conservative denominator — if a theme appears in every run of the effective window, `windowSize` equals the actual window length; if the top theme does not appear in every run, the denominator is lower than the window length but still never less than any individual `runCount`). Deriving the denominator this way avoids threading the store's window size through the markdown writer and keeps the `TrendReport` shape unchanged.
     - Emerging items render as `- {theme} — first seen {runId-shaped-timestamp}`.
     - Fading items render as `- {theme} — last seen {runId-shaped-timestamp}, {runsSinceLastSeen} runs ago`.
     - Empty individual categories within an otherwise-populated trends section are omitted (no `### Persistent` heading with nothing under it).
@@ -80,7 +80,7 @@ This feature ships a `src/trends/trend-detector.ts` module that:
 
 The module does not know about Claude, markdown, the dedup cache, the `--replay` flag's CLI surface, or the scroller/extractor. It produces a typed report from a typed input; the CLI decides where to thread the result and the markdown writer decides how to render it.
 
-### Scenario: Mature store — three persistent themes, one emerging, one fading
+### Scenario: Mature store — two persistent themes, one emerging, one fading
 
 Given the rolling-themes store contains 8 runs ordered oldest-first:
   | Index | runId                  | themes                                                  |
@@ -206,7 +206,7 @@ When `summary.md` is rendered
 Then the section order is: header, verdict line, `## Themes`, `## Trends`, `## Worth clicking`, `## Voices`, `## Noise`, footer
 And the `## Trends` section contains `### Persistent` and `### Emerging` subheadings
 And it does NOT contain a `### Fading` subheading (empty subcategories are omitted)
-And under `### Persistent` there is one bullet: `- agent orchestration — 7/9 runs`
+And under `### Persistent` there is one bullet: `- agent orchestration — 7/7 runs` (the denominator is the highest `runCount` among persistent themes — with only one persistent theme at `runCount: 7`, the denominator is 7; the CLI mockup below shows a case where the top theme appears in every run and the denominator equals the window size)
 And under `### Emerging` there is one bullet: `- sales enablement playbooks — first seen 2026-04-16T14-32-07Z`
 (One section, scannable in two seconds. The operator's eye lands on `## Trends` after `## Themes` and before the actionable `## Worth clicking` block — the order matches the operator's reading flow: "what is the feed about" → "how is that changing" → "what should I click".)
 
