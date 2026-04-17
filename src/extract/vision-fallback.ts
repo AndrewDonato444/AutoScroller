@@ -77,6 +77,44 @@ const SONNET_4_6_INPUT_PRICE_PER_MTK = 3.0; // $3 per million input tokens
 const SONNET_4_6_OUTPUT_PRICE_PER_MTK = 15.0; // $15 per million output tokens
 
 /**
+ * Vision API configuration constants.
+ */
+const VISION_MODEL = 'claude-sonnet-4-6';
+const MAX_TOKENS_PER_REQUEST = 4096;
+const IMAGE_MEDIA_TYPE = 'image/png';
+const TEXT_CONTENT_TYPE = 'text';
+
+/**
+ * TypeScript type definition for ExtractedPost (used in vision prompt).
+ */
+const EXTRACTED_POST_TYPE_DEF = `interface ExtractedPost {
+  id: string;
+  url: string;
+  author: {
+    handle: string;
+    displayName: string;
+    verified: boolean;
+  };
+  text: string;
+  postedAt: string | null;
+  metrics: {
+    replies: number | null;
+    reposts: number | null;
+    likes: number | null;
+    views: number | null;
+  };
+  media: Array<{
+    type: 'image' | 'video' | 'gif';
+    url: string;
+  }>;
+  isRepost: boolean;
+  repostedBy: string | null;
+  quoted: ExtractedPost | null;
+  extractedAt: string;
+  tickIndex: number;
+}`;
+
+/**
  * Calculate content hash for dedup fallback.
  */
 function calculateContentHash(handle: string, text: string): string {
@@ -218,6 +256,123 @@ function parseVisionResponse(responseText: string): ExtractedPost[] {
 }
 
 /**
+ * Process a single screenshot with the vision API.
+ */
+async function processScreenshot(
+  screenshotPath: string,
+  prompt: string,
+  anthropicClient: Anthropic
+): Promise<{
+  posts: ExtractedPost[];
+  inputTokens: number;
+  outputTokens: number;
+}> {
+  // Read screenshot as base64
+  const screenshotBuffer = await readFile(screenshotPath);
+  const screenshotBase64 = screenshotBuffer.toString('base64');
+
+  // Call Claude vision API
+  const response = await anthropicClient.messages.create({
+    model: VISION_MODEL,
+    max_tokens: MAX_TOKENS_PER_REQUEST,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: IMAGE_MEDIA_TYPE,
+              data: screenshotBase64,
+            },
+          },
+          {
+            type: TEXT_CONTENT_TYPE,
+            text: prompt,
+          },
+        ],
+      },
+    ],
+  });
+
+  // Extract token usage
+  const inputTokens = response.usage?.input_tokens ?? 0;
+  const outputTokens = response.usage?.output_tokens ?? 0;
+
+  // Parse response
+  const textContent = response.content.find(c => c.type === TEXT_CONTENT_TYPE);
+  if (!textContent || textContent.type !== TEXT_CONTENT_TYPE) {
+    throw new Error('No text content in response');
+  }
+
+  const posts = parseVisionResponse(textContent.text);
+
+  return { posts, inputTokens, outputTokens };
+}
+
+/**
+ * Merge vision posts with DOM posts, deduplicating and filling null fields.
+ */
+function mergeVisionPosts(
+  existingPosts: ExtractedPost[],
+  visionPosts: ExtractedPost[]
+): {
+  mergedPosts: ExtractedPost[];
+  merged: number;
+  duplicatesSkipped: number;
+} {
+  const mergedPosts = [...existingPosts];
+  const domPostsById = new Map(existingPosts.map(p => [p.id, p]));
+  const domPostsByHash = new Map(
+    existingPosts.map(p => [calculateContentHash(p.author.handle, p.text), p])
+  );
+
+  let merged = 0;
+  let duplicatesSkipped = 0;
+
+  for (const visionPost of visionPosts) {
+    // Try to find by ID first
+    const domPost = domPostsById.get(visionPost.id);
+
+    if (domPost) {
+      // Same ID found - check if DOM has null fields
+      if (hasNullFields(domPost)) {
+        // Field-wise merge - vision fills null fields
+        const mergeResult = mergePost(domPost, visionPost);
+        const index = mergedPosts.findIndex(p => p.id === visionPost.id);
+        if (index !== -1) {
+          mergedPosts[index] = mergeResult.post;
+          if (mergeResult.merged) {
+            merged++;
+          }
+        }
+      } else {
+        // DOM post is complete - skip vision version as duplicate
+        duplicatesSkipped++;
+      }
+      continue;
+    }
+
+    // Try content hash fallback
+    const contentHash = calculateContentHash(visionPost.author.handle, visionPost.text);
+    const domPostByHash = domPostsByHash.get(contentHash);
+
+    if (domPostByHash) {
+      // Same content found - skip as duplicate
+      duplicatesSkipped++;
+      continue;
+    }
+
+    // New post - add to merged list
+    mergedPosts.push(visionPost);
+    merged++;
+  }
+
+  return { mergedPosts, merged, duplicatesSkipped };
+}
+
+/**
  * Create a vision fallback instance.
  */
 export function createVisionFallback(config: VisionFallbackConfig): VisionFallback {
@@ -281,34 +436,7 @@ export function createVisionFallback(config: VisionFallbackConfig): VisionFallba
     visionStats.screenshotsSent = screenshots.length;
 
     // Build vision prompt with ExtractedPost type definition
-    const extractedPostTypeDef = `interface ExtractedPost {
-  id: string;
-  url: string;
-  author: {
-    handle: string;
-    displayName: string;
-    verified: boolean;
-  };
-  text: string;
-  postedAt: string | null;
-  metrics: {
-    replies: number | null;
-    reposts: number | null;
-    likes: number | null;
-    views: number | null;
-  };
-  media: Array<{
-    type: 'image' | 'video' | 'gif';
-    url: string;
-  }>;
-  isRepost: boolean;
-  repostedBy: string | null;
-  quoted: ExtractedPost | null;
-  extractedAt: string;
-  tickIndex: number;
-}`;
-
-    const prompt = buildVisionPrompt(extractedPostTypeDef);
+    const prompt = buildVisionPrompt(EXTRACTED_POST_TYPE_DEF);
 
     // Collect vision posts from all screenshots
     const visionPosts: ExtractedPost[] = [];
@@ -319,52 +447,13 @@ export function createVisionFallback(config: VisionFallbackConfig): VisionFallba
       const screenshotPath = screenshots[i];
 
       try {
-        // Read screenshot as base64
-        const screenshotBuffer = await readFile(screenshotPath);
-        const screenshotBase64 = screenshotBuffer.toString('base64');
-
-        // Call Claude vision API
-        const response = await anthropicClient.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: 'image/png',
-                    data: screenshotBase64,
-                  },
-                },
-                {
-                  type: 'text',
-                  text: prompt,
-                },
-              ],
-            },
-          ],
-        });
+        const result = await processScreenshot(screenshotPath, prompt, anthropicClient);
 
         visionStats.apiCalls++;
-
-        // Extract token usage
-        if (response.usage) {
-          totalInputTokens += response.usage.input_tokens;
-          totalOutputTokens += response.usage.output_tokens;
-        }
-
-        // Parse response
-        const textContent = response.content.find(c => c.type === 'text');
-        if (!textContent || textContent.type !== 'text') {
-          throw new Error('No text content in response');
-        }
-
-        const posts = parseVisionResponse(textContent.text);
-        visionStats.visionPostsExtracted += posts.length;
-        visionPosts.push(...posts);
+        totalInputTokens += result.inputTokens;
+        totalOutputTokens += result.outputTokens;
+        visionStats.visionPostsExtracted += result.posts.length;
+        visionPosts.push(...result.posts);
 
       } catch (error: any) {
         visionStats.apiErrors.push({
@@ -379,52 +468,12 @@ export function createVisionFallback(config: VisionFallbackConfig): VisionFallba
     visionStats.costEstimateUsd = estimateCost(totalInputTokens, totalOutputTokens);
 
     // Merge vision posts with DOM posts
-    const mergedPosts = [...existingPosts];
-    const domPostsById = new Map(existingPosts.map(p => [p.id, p]));
-    const domPostsByHash = new Map(
-      existingPosts.map(p => [calculateContentHash(p.author.handle, p.text), p])
-    );
-
-    for (const visionPost of visionPosts) {
-      // Try to find by ID first
-      const domPost = domPostsById.get(visionPost.id);
-
-      if (domPost) {
-        // Same ID found - check if DOM has null fields
-        if (hasNullFields(domPost)) {
-          // Field-wise merge - vision fills null fields
-          const { post: mergedPost, merged } = mergePost(domPost, visionPost);
-          const index = mergedPosts.findIndex(p => p.id === visionPost.id);
-          if (index !== -1) {
-            mergedPosts[index] = mergedPost;
-            if (merged) {
-              visionStats.visionPostsMerged++;
-            }
-          }
-        } else {
-          // DOM post is complete - skip vision version as duplicate
-          visionStats.visionDuplicatesSkipped++;
-        }
-        continue;
-      }
-
-      // Try content hash fallback
-      const contentHash = calculateContentHash(visionPost.author.handle, visionPost.text);
-      const domPostByHash = domPostsByHash.get(contentHash);
-
-      if (domPostByHash) {
-        // Same content found - skip as duplicate
-        visionStats.visionDuplicatesSkipped++;
-        continue;
-      }
-
-      // New post - add to merged list
-      mergedPosts.push(visionPost);
-      visionStats.visionPostsMerged++;
-    }
+    const mergeResult = mergeVisionPosts(existingPosts, visionPosts);
+    visionStats.visionPostsMerged = mergeResult.merged;
+    visionStats.visionDuplicatesSkipped = mergeResult.duplicatesSkipped;
 
     return {
-      posts: mergedPosts,
+      posts: mergeResult.mergedPosts,
       visionStats,
     };
   }
