@@ -4,19 +4,20 @@ domain: foundation
 source: src/cli/login.ts
 tests:
   - tests/foundation/login.test.ts
+  - tests/foundation/cli-entry.test.ts
 components: []
 design_refs: []
 personas:
   - primary
   - anti-persona
-status: specced
+status: implemented
 created: 2026-04-16
 updated: 2026-04-16
 ---
 
 # Login Command
 
-**Source File**: `src/cli/login.ts`, `src/login.ts`, `src/browser/session.ts`
+**Source File**: `src/cli/login.ts`, `src/login.ts`, `src/cli/index.ts`
 **Design System**: N/A (CLI tool — no UI tokens)
 **Personas**: `.specs/personas/primary.md`, `.specs/personas/anti-persona.md`
 
@@ -64,7 +65,7 @@ And the process exits with status `2`
 Given the operator has typed their credentials and X has redirected to `https://x.com/home`
 When the operator closes the browser window
 Then the handler reads the final URL of the last active page before the context closed
-And prints: `login saved to ~/scrollproxy/chrome — you can now run pnpm scroll`
+And prints: `login saved to <resolved userDataDir> — you can now run pnpm scroll` (the `~` in config is expanded to the absolute path before printing, e.g., `/Users/andrew/scrollproxy/chrome`)
 And the process exits with status `0`
 
 ### Scenario: Alternate logged-in URL (handle page) also counts as success
@@ -163,10 +164,12 @@ Happy path:
 $ pnpm login
   log in to X in the open window, then close the window when done
   (Chromium window opens on x.com/login; operator types credentials; window closes)
-  login saved to ~/scrollproxy/chrome — you can now run pnpm scroll
+  login saved to /Users/andrew/scrollproxy/chrome — you can now run pnpm scroll
 $ echo $?
 0
 ```
+
+(The printed path is the resolved absolute path — `~` from config is expanded via `expandHomeDir` before display.)
 
 Abandoned login:
 
