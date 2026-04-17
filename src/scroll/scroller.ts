@@ -44,6 +44,7 @@ export interface ScrollOptions {
 const X_HOME_URL = 'https://x.com/home';
 const SCROLL_DELTA_MIN = 400;
 const SCROLL_DELTA_MAX = 1200;
+const MS_PER_MINUTE = 60 * 1000;
 
 /**
  * Expand ~ in a path to the user's home directory.
@@ -70,6 +71,88 @@ function randomInRange(min: number, max: number, rng: () => number = Math.random
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Calculate pause duration based on tick count (normal vs long pause).
+ */
+function calculatePauseDuration(
+  tickCount: number,
+  longPauseEvery: number,
+  jitterMs: [number, number],
+  longPauseMs: [number, number],
+  rng: () => number
+): number {
+  if (tickCount % longPauseEvery === 0) {
+    // Long pause (simulating reading)
+    return randomInRange(longPauseMs[0], longPauseMs[1], rng);
+  }
+  // Normal jitter pause
+  return randomInRange(jitterMs[0], jitterMs[1], rng);
+}
+
+/**
+ * Invoke the tick hook callback with error handling.
+ */
+async function invokeTickHook(
+  onTick: ((ctx: TickHookContext) => Promise<void>) | undefined,
+  context: TickHookContext
+): Promise<void> {
+  if (!onTick) {
+    return;
+  }
+
+  try {
+    await onTick(context);
+  } catch (error: any) {
+    // Log error but continue scrolling
+    console.log(`tick ${context.tickIndex} hook error: ${error.message}`);
+  }
+}
+
+/**
+ * Initialize browser context and validate logged-in session.
+ * Returns null if session is valid, or a ScrollResult error if not.
+ */
+async function initializeBrowserSession(
+  userDataDir: string,
+  headless: boolean,
+  viewport: { width: number; height: number },
+  startTime: number
+): Promise<{ context: BrowserContext; page: Page; browserClosed: boolean } | ScrollResult> {
+  // Launch persistent context
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    headless,
+    viewport,
+  });
+
+  let browserClosed = false;
+
+  // Set up close handler
+  context.on('close', () => {
+    browserClosed = true;
+  });
+
+  // Get or create the first page
+  const pages = context.pages();
+  const page = pages.length > 0 ? pages[0] : await context.newPage();
+
+  // Navigate to X home
+  await page.goto(X_HOME_URL);
+
+  // Check if logged in
+  const currentUrl = page.url();
+  if (!isLoggedIn(currentUrl)) {
+    await context.close();
+    return {
+      status: 'session_expired',
+      tickCount: 0,
+      elapsedMs: Date.now() - startTime,
+      finalUrl: currentUrl,
+    };
+  }
+
+  return { context, page, browserClosed };
 }
 
 /**
@@ -133,38 +216,24 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
   let browserClosed = false;
 
   try {
-    // Launch persistent context
-    context = await chromium.launchPersistentContext(resolvedUserDataDir, {
+    // Initialize browser session and validate login
+    const sessionResult = await initializeBrowserSession(
+      resolvedUserDataDir,
       headless,
       viewport,
-    });
+      startTime
+    );
 
-    // Set up close handler
-    context.on('close', () => {
-      browserClosed = true;
-    });
-
-    // Get or create the first page
-    const pages = context.pages();
-    page = pages.length > 0 ? pages[0] : await context.newPage();
-
-    // Navigate to X home
-    await page.goto(X_HOME_URL);
-
-    // Check if logged in
-    const currentUrl = page.url();
-    if (!isLoggedIn(currentUrl)) {
-      await context.close();
-      return {
-        status: 'session_expired',
-        tickCount: 0,
-        elapsedMs: Date.now() - startTime,
-        finalUrl: currentUrl,
-      };
+    // If session is invalid, return the error result
+    if ('status' in sessionResult) {
+      return sessionResult;
     }
 
+    // Extract initialized session
+    ({ context, page, browserClosed } = sessionResult);
+
     // Calculate budget in milliseconds
-    const budgetMs = budgetMinutes * 60 * 1000;
+    const budgetMs = budgetMinutes * MS_PER_MINUTE;
 
     // Scroll loop
     while (true) {
@@ -193,30 +262,14 @@ export async function runScroll(options: ScrollOptions): Promise<ScrollResult> {
       tickCount++;
 
       // Call tick hook if provided
-      if (onTick) {
-        try {
-          await onTick({
-            page,
-            tickIndex: tickCount - 1, // 0-indexed
-            elapsedMs: Date.now() - startTime,
-          });
-        } catch (error: any) {
-          // Log error but continue scrolling
-          console.log(`tick ${tickCount - 1} hook error: ${error.message}`);
-        }
-      }
+      await invokeTickHook(onTick, {
+        page,
+        tickIndex: tickCount - 1, // 0-indexed
+        elapsedMs: Date.now() - startTime,
+      });
 
-      // Determine pause duration
-      let pauseMs: number;
-      if (tickCount % longPauseEvery === 0) {
-        // Long pause (simulating reading)
-        pauseMs = randomInRange(longPauseMs[0], longPauseMs[1], rng);
-      } else {
-        // Normal jitter pause
-        pauseMs = randomInRange(jitterMs[0], jitterMs[1], rng);
-      }
-
-      // Sleep before next tick
+      // Determine pause duration and sleep
+      const pauseMs = calculatePauseDuration(tickCount, longPauseEvery, jitterMs, longPauseMs, rng);
       await sleep(pauseMs);
     }
 
