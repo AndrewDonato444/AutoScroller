@@ -128,7 +128,8 @@ And the process exits `0`
 
 Given feature 6 (extractor) will need to inspect the DOM after each scroll
 When `runScroll()` is called with an optional `onTick` callback
-Then after each wheel tick and its post-tick pause, `onTick({ page, tickIndex, elapsedMs })` is awaited before the next tick
+Then after each wheel tick (and before the tick's post-tick pause), `onTick({ page, tickIndex, elapsedMs })` is awaited before the pause starts
+And `tickIndex` is 0-indexed (first tick is `tickIndex: 0`)
 And if `onTick` throws, the error is caught, logged as one line (`tick <N> hook error: <message>`), and the loop continues
 And if no callback is provided, the loop runs unchanged
 (This is the seam for feature 6. No extraction logic lives in the scroller; the extractor subscribes. Loud-not-silent: a broken extractor does not kill the scroll, but every failure is visible on stdout.)
