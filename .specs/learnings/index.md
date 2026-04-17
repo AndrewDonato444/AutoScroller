@@ -19,6 +19,26 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: Writer Interface + NotionWriter
+
+**Orchestrator Interface Design:**
+- Return all meaningful signals even if current callers only use a subset (good interface design)
+- Example: `runWriters()` returns `anySucceeded` even though CLI handlers only check `markdownSucceeded`
+
+**Static Imports Without Side Effects:**
+- Acceptable to statically import conditional features if the module has no side effects on import
+- `@notionhq/client` SDK loaded at startup for all runs but makes no auth/network calls unless Notion writer is constructed
+
+**Build Failures vs Logic Bugs:**
+- 249 tests passing but build failed due to unused variable (linting ≠ logic)
+- Exit code only uses `markdownSucceeded`, making `anySucceeded` dead code at call site
+
+**Spec Drift from Aspirational Design:**
+- Spec: lazy imports, debug logging, strict validation
+- Implementation: static imports (no side effects), silent reordering (less noise), shallow strict (smoother migration)
+- Root cause: no tests encoded aspirational behavior, gap survived to landing
+- Lesson: update specs to match what was built, not what was anticipated
+
 ### 2026-04-17: Dry-Run Flag
 
 **CLI Helper Design:**

@@ -878,6 +878,102 @@ recordMetricFailure('views', rawViews, parsedViews, postId, tickIndex, failures)
 
 **When to apply:** Similar blocks repeated 3+ times where only data (field names, values) differs.
 
+### Orchestrator Interface Design
+
+**Pattern:** When designing orchestrator functions that coordinate multiple operations, return all meaningful signals even if current callers only use a subset.
+
+```typescript
+// GOOD: Return full information
+export interface RunWritersResult {
+  receipts: Array<{ id: string; receipt: WriteReceipt }>;
+  markdownSucceeded: boolean;  // CLI needs this for exit code
+  anySucceeded: boolean;        // Not used now, but might be needed later
+}
+
+export async function runWriters(params): Promise<RunWritersResult> {
+  // ... run all writers
+  return {
+    receipts,
+    markdownSucceeded: receipts.some(r => r.id === 'markdown' && r.receipt.ok),
+    anySucceeded: receipts.some(r => r.receipt.ok),
+  };
+}
+
+// Usage: caller selects what matters
+const { receipts, markdownSucceeded } = await runWriters(...);
+// anySucceeded not used — that's OK, no variable declared for it
+```
+
+**Why:** The orchestrator provides full information, consumers select what matters for their logic. Extra return values have minimal overhead. Example: `runWriters()` returns `anySucceeded` even though CLI handlers only check `markdownSucceeded` for exit codes — a future monitoring dashboard might need `anySucceeded`.
+
+**When to apply:** Orchestrator functions that produce multiple meaningful signals. Don't return kitchen-sink objects with 20 fields, but do return the 3-5 core signals that different callers might care about.
+
+**Anti-pattern:** Only returning what the first caller needs, then refactoring the return type when a second caller needs something else. Better to anticipate the obvious signals upfront.
+
+### Static Imports with No Side Effects
+
+**Pattern:** Static imports that load modules at startup are acceptable even for conditional features (like Notion writer for markdown-only runs) as long as the imported module has no side effects.
+
+```typescript
+// notion.ts
+import { Client } from '@notionhq/client';  // Static import at top
+
+export function createNotionWriter(config: NotionWriterConfig): Writer {
+  const client = new Client({ auth: config.token });  // SDK only instantiated here
+  // ...
+}
+
+// scroll.ts
+import { createNotionWriter } from '../writer/notion.js';  // Static import
+
+// Even markdown-only runs pay module load cost, but no auth/network cost
+const writers = config.output.destinations.includes('notion')
+  ? [markdownWriter, createNotionWriter(notionConfig)]
+  : [markdownWriter];
+```
+
+**Trade-off:** 
+- **Pro:** Simpler code (no dynamic imports, no conditional loading)
+- **Con:** Module evaluation cost paid every run (even markdown-only)
+- **Acceptable if:** The imported module has no side effects (no I/O, no network calls, no global registration on import)
+
+**How to check:**
+1. Does the module perform I/O on import? (file reads, env access)
+2. Does it register globals or modify shared state?
+3. Does it make network calls?
+4. If all "no" → static import is fine
+
+**Example:** `@notionhq/client` SDK defines classes and exports them. The `Client` constructor makes no network calls until methods like `pages.create()` are invoked. Static import is acceptable.
+
+**When to avoid:** Modules that perform expensive initialization on import (database connections, file scanning, heavy parsing). In those cases, use dynamic `await import(...)` inside the conditional path.
+
+### Spec Drift: Aspirational Design vs Sufficient Implementation
+
+**Problem:** Specs written before implementation often describe idealized patterns that turn out to be unnecessary when implementation discovers what's _sufficient_ to meet requirements.
+
+**Example patterns:**
+- **Lazy loading** (spec: "dynamic import to reduce startup cost") → Static import chosen (no side effects, simpler code)
+- **Debug logging** (spec: "log when reordering destinations for visibility") → Silent reordering chosen (operator doesn't need the noise)
+- **Strict validation** (spec: "reject unknown keys with migration hints") → Shallow strict chosen (smoother config migration)
+
+**Why drift happens:** Specs anticipate best practices and optimization opportunities. Implementation discovers trade-offs:
+- Is the optimization worth the complexity?
+- Does the logging add value or just noise?
+- Is fail-loud validation helping or hurting UX?
+
+**This drift is healthy** when the simpler approach still meets all Gherkin scenarios.
+
+**How to reconcile:** 
+1. Update the spec to describe what was actually built
+2. Add a note explaining why the simpler choice was made
+3. Don't create unnecessary complexity in code just to match forward-looking specs
+
+**Root cause:** Tests that don't encode aspirational details allow drift to survive. If the spec said "logs destination reorder" but no test checked for that log line, implementation could skip it without failing tests.
+
+**Learning:** Specs are planning documents, not contracts. If implementation finds a simpler path that meets requirements, the spec should be updated to match reality. Don't leave specs as "what we thought we'd build" — update them to "what we actually built."
+
+**When to apply:** During drift-check or code review, when actual implementation diverges from spec's anticipated patterns. Ask: "Does this divergence still meet the Gherkin scenarios?" If yes, update the spec. If no, fix the implementation.
+
 ### Extract URL Constants for Maintainability
 
 Extract URLs used in navigation to named constants:

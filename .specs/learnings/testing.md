@@ -589,6 +589,26 @@ Then after each wheel tick (and before the tick's post-tick pause),
 
 ---
 
+## Build vs Test Coverage
+
+### Build Failures vs Logic Bugs
+
+**Pattern:** A comprehensive passing test suite doesn't guarantee a clean build. Build failures can occur due to linting issues even when all tests pass.
+
+**Example:** The Writer Interface + NotionWriter feature had all 249 tests passing but failed the build check due to unused variables (`anySucceeded` declared but never read in CLI handlers). The exit code logic only depends on `markdownSucceeded`, making `anySucceeded` dead code at the call site even though it's returned by the orchestrator.
+
+**Why:** Linting failures are distinct from logic bugs:
+- **Tests validate behavior** — Functions work correctly, inputs produce expected outputs
+- **Linters enforce code quality** — No unused variables, consistent style, type safety
+
+**When to apply:** Run both `pnpm test` AND `pnpm build` (or equivalent lint check) before considering a feature complete. Integration tests validate the happy path works; linters catch code smell that tests miss.
+
+**Fix pattern:** When an orchestrator returns multiple values but only some are needed:
+- Remove unused destructured variables: `const { receipts, markdownSucceeded } = await runWriters(...)` (don't declare `anySucceeded` if you won't read it)
+- Keep the return value in the orchestrator — future callers might need it
+
+---
+
 ## Testing Read-Only Behavior
 
 ### Deep Copy Comparison for Non-Mutating Functions

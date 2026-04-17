@@ -504,4 +504,22 @@ N/A — CLI tool, no UI components.
 
 ## Learnings
 
-<!-- Updated via /compound after implementation -->
+### Writer Interface Design
+
+**Orchestrators should return multiple signals even when callers only use a subset.** `runWriters()` returns `{ receipts, markdownSucceeded, anySucceeded }` but CLI handlers only check `markdownSucceeded` for the exit code. The extra return values don't hurt (minimal overhead), and future callers might need them. This is good interface design - the orchestrator provides full information, consumers select what matters for their logic.
+
+### Static Imports Without Side Effects
+
+`@notionhq/client` is imported statically at the top of `notion.ts` and `createNotionWriter` is statically imported in CLI handlers. The SDK module is evaluated at startup for all runs (including markdown-only), but no auth or network calls occur unless a Notion writer is actually constructed. This trades eager module evaluation for implementation simplicity - acceptable because the SDK has no side effects on import.
+
+### Silent Reordering for Invariants
+
+`buildWriters` in scroll.ts/replay.ts reorders destinations silently to guarantee markdown runs first (the "never lose scroll effort" invariant). No debug log, no warning. The config is treated as a set, not an ordered list - the CLI enforces the priority. Rationale: operator doesn't need noise about reordering; the contract is "markdown is the floor" regardless of config order.
+
+### Shallow Strict Validation
+
+The `configSchema` applies `.strict()` only at the top level. Nested objects like `output` use default Zod behavior (silently strip unknown keys). This allows Phase 2 configs with `output.format: markdown` to work in Phase 3 - the unknown `format` key is stripped, and `destinations` defaults to `['markdown']`. Trade-off: less strict validation for smoother config migration.
+
+### Spec Drift from Aspirational Design
+
+The spec was written with Phase 3 ideals: lazy-import the Notion SDK (reduce startup cost), log when reordering destinations (debug visibility), strictly reject deprecated config keys with migration hints (fail-loud validation). Implementation chose simpler patterns: static imports (simpler code, SDK has no side effects), silent reordering (less noise), shallow strict validation (smoother migration). Root cause: no tests encoded the aspirational behavior, so the gap survived to landing. **Lesson:** specs written before implementation contain ideals; implementation discovers what's sufficient; specs must be updated to match reality.
