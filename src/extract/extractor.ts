@@ -491,8 +491,7 @@ async function extractRepostInfo(
 async function extractQuotedPost(
   article: any,
   page: Page,
-  tickIndex: number,
-  failures: SelectorFailure[]
+  tickIndex: number
 ): Promise<ExtractedPost | null> {
   try {
     // Extract quoted post data in a single page evaluation
@@ -574,8 +573,17 @@ async function extractQuotedPost(
       return null;
     }
 
+    // After hasQuoted check, we know the full structure exists
+    const { permalink, author, text, postedAt } = quotedData as {
+      hasQuoted: true;
+      permalink: string;
+      author: Author;
+      text: string;
+      postedAt: string | null;
+    };
+
     // Extract post ID from permalink
-    const postId = extractPostId(quotedData.permalink);
+    const postId = extractPostId(permalink);
     if (!postId) {
       return null;
     }
@@ -583,12 +591,12 @@ async function extractQuotedPost(
     // Build the quoted post object
     const quotedPost: ExtractedPost = {
       id: postId,
-      url: quotedData.permalink.startsWith('http')
-        ? quotedData.permalink
-        : `https://x.com${quotedData.permalink}`,
-      author: quotedData.author,
-      text: quotedData.text,
-      postedAt: quotedData.postedAt,
+      url: permalink.startsWith('http')
+        ? permalink
+        : `https://x.com${permalink}`,
+      author,
+      text,
+      postedAt,
       metrics: {
         replies: null,
         reposts: null,
@@ -648,7 +656,7 @@ async function parseArticle(
     const metrics = await extractMetrics(article, page, tickIndex, postId, failures);
     const media = await extractMedia(article, page);
     const repostInfo = await extractRepostInfo(article, page);
-    const quoted = await extractQuotedPost(article, page, tickIndex, failures);
+    const quoted = await extractQuotedPost(article, page, tickIndex);
 
     const post: ExtractedPost = {
       id: postId,
