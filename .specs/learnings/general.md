@@ -1266,3 +1266,128 @@ console.log(`quarantined to rolling-themes.json.corrupt-${epochMs}`);  // Correc
 **Root cause:** Functions that perform file operations with timestamps should return the timestamp they used, not expect callers to calculate it independently.
 
 **When to apply:** Any function that generates timestamped filenames, temporary files, or backup files. Return the timestamp so callers can log accurately or use it in other operations.
+
+### Category Precedence via Exclusion Sets
+
+**Pattern:** When computing mutually exclusive categories from the same data set, use sequential computation with `Set` tracking to enforce precedence order.
+
+**Example from Cross-Run Trend Detection:**
+```typescript
+const emergingThemes = new Set<string>();
+const fadingThemes = new Set<string>();
+
+// 1. Compute highest-precedence category first
+themeMetadata.forEach((meta, theme) => {
+  if (meetsEmergingCriteria(meta)) {
+    emerging.push({ theme, ... });
+    emergingThemes.add(theme);  // Track assignment
+  }
+});
+
+// 2. Compute next category, excluding already-assigned
+themeMetadata.forEach((meta, theme) => {
+  if (meetsFadingCriteria(meta) && !emergingThemes.has(theme)) {
+    fading.push({ theme, ... });
+    fadingThemes.add(theme);
+  }
+});
+
+// 3. Residual category: exclude all previously assigned
+themeMetadata.forEach((meta, theme) => {
+  if (meetsPersistentCriteria(meta) && !emergingThemes.has(theme) && !fadingThemes.has(theme)) {
+    persistent.push({ theme, ... });
+  }
+});
+```
+
+**Why:** Ensures no theme appears in multiple categories. Computing categories in parallel (all at once) risks overlap when a theme meets multiple criteria. Sequential computation with exclusion tracking gives deterministic precedence: higher-priority categories claim themes first.
+
+**When to apply:** 
+- Analytics/reporting features with mutually exclusive categories
+- Classification systems with precedence rules (e.g., "urgent" > "high priority" > "normal")
+- Tag/label assignment where one item can only have one primary tag
+
+**Anti-pattern:** Parallel computation with post-processing to resolve overlaps. That approach hides the precedence rules in conflict-resolution logic instead of making them explicit in the computation order.
+
+### Window Calculation with Edge Case Handling
+
+**Pattern:** When computing sliding window positions, use `Math.max(0, position)` to handle small windows gracefully instead of relying on negative indices.
+
+**Problem:** Computing a window start as `runs.length - windowSize` can produce negative values when the array is smaller than the window.
+
+**Solution:**
+```typescript
+// BAD: Negative index causes unexpected behavior
+const emergingWindowStart = runs.length - EMERGING_MAX_AGE_RUNS;  // Can be -1 for 1-run window
+if (firstPosition >= emergingWindowStart) { ... }  // firstPosition 0 >= -1 → true (wrong!)
+
+// GOOD: Clamp to 0
+const emergingWindowStart = Math.max(0, runs.length - EMERGING_MAX_AGE_RUNS);
+if (firstPosition > emergingWindowStart) { ... }  // firstPosition 0 > 0 → false (correct!)
+```
+
+**Why:** Negative indices have different semantics in different contexts:
+- `Array.slice(-1)` means "last element" (intentional feature)
+- Comparison `0 >= -1` in window logic means "everything qualifies" (unintentional bug)
+
+Clamping to 0 makes the logic clear: "window starts at index 0 or later, never before."
+
+**When to apply:** Sliding windows, recent-item filters, lookback calculations — any logic that computes a start position as `totalItems - windowSize`.
+
+### Strict Inequality for Threshold Boundaries
+
+**Pattern:** When implementing "more than N" thresholds, use strict inequality (`>`) not non-strict (`>=`). Document the boundary behavior explicitly in specs.
+
+**Example from Cross-Run Trend Detection:**
+- Fading theme: "absent from the most recent 3 runs" means `runsSinceLastSeen > 3` (4+ absences = fading)
+- If using `>=`, 3 absences would trigger fading (off-by-one error caught by tests)
+
+**Why spec precision matters:**
+- Spec: "absent from the most recent 3 runs" → implementation must count: 1, 2, 3 absences = NOT fading; 4+ = fading
+- Off-by-one here changes category membership for real-world data
+
+**Solution:** Spec scenarios should include boundary cases:
+```markdown
+And `claude code workflows` appears in NO categories
+  (only 3 of 9 runs — persistent requires 4+)
+
+And 3 runs of absence is NOT fading
+  (fading requires STRICTLY MORE than 3 absences)
+```
+
+**When to apply:** Any threshold-based categorization. Test `threshold - 1`, `threshold`, and `threshold + 1` to verify the inequality direction. Update specs to document "at least N" vs "more than N" explicitly.
+
+### Temporal Ordering in State Updates
+
+**Pattern:** When computing analytics/derived views from mutable state, snapshot the state BEFORE the update that includes current data, not after.
+
+**Example from Cross-Run Trend Detection:**
+```typescript
+// CLI orchestration
+const store = await loadThemesStore(stateDir);  // Pre-update snapshot
+
+// Compute trends against pre-update store + current themes (logical append, no mutation)
+const trends = detectTrends({ store, currentThemes: summary.themes });
+
+// Embed trends in summary
+summary.trends = trends;
+await writeSummaryJson(runDir, summary);
+
+// NOW update the store to include current run
+const updatedStore = appendRun(store, { runId, themes: summary.themes });
+await saveThemesStore(updatedStore, stateDir);
+```
+
+**Why:** The trend report should reflect "what was true going into this run" (pre-update view), not "what we know after updating" (post-update view). If detection ran after the update:
+- The current run would appear in the stored history
+- The detector's `currentThemes` parameter would double-count
+- Emerging/fading boundaries would shift incorrectly
+
+**Key insight:** Logical append (passing `currentThemes` to detector) lets it see the full window without mutating the store. Store update happens afterward to persist the new run.
+
+**When to apply:** 
+- Dedup caches: partition posts against pre-update cache, THEN update cache with new hashes
+- Rolling analytics: compute "change since last run" before persisting current run
+- Audit logs: capture "state before action" before recording the action itself
+
+**Anti-pattern:** Updating state first, then trying to compute deltas. That requires complex rollback logic or synthetic removal of the just-added data.

@@ -469,4 +469,89 @@ Frustrations addressed:
 
 ## Learnings
 
+### Pure Function Architecture for Maximum Testability
+
+**Decision:** Implemented `detectTrends()` as a pure function with zero I/O, no `Date.now()`, no console output, no mutation of input store.
+
+**Why:** Enables deterministic testing without mocks, fixtures, or temp directories. Same inputs → same output, always. Critical for the `--replay` feature where re-running trend detection against saved runs must produce identical results.
+
+**Impact:** All 16 tests construct `ThemesStore` literals in memory and assert on the report. No filesystem isolation, no clock manipulation, no environment setup needed.
+
+### Category Precedence via Exclusion Sets
+
+**Decision:** Compute categories in strict order (emerging → fading → persistent), tracking assigned themes in `Set` objects to enforce mutual exclusivity.
+
+**Why:** A theme can only be in one category at a time. Spec item 16 required no overlap. Computing in precedence order with exclusion tracking ensures:
+- Emerging themes are never also marked persistent
+- Fading themes are excluded from persistent
+- Persistent is the residual category after emerging/fading
+
+**Implementation:**
+```typescript
+const emergingThemes = new Set<string>();
+const fadingThemes = new Set<string>();
+
+// 1. Compute emerging first, track in Set
+emergingThemes.add(theme);
+
+// 2. Compute fading, exclude emerging
+if (!emergingThemes.has(theme)) {
+  fadingThemes.add(theme);
+}
+
+// 3. Compute persistent, exclude both
+if (!emergingThemes.has(theme) && !fadingThemes.has(theme)) {
+  persistent.push(...);
+}
+```
+
+**Gotcha:** If computed in parallel (all categories at once), themes could appear in multiple categories. Sequential computation with exclusion is mandatory.
+
+### Window Size Derivation from Max runCount
+
+**Decision:** Compute `windowSize` for markdown rendering as `Math.max(...persistent.map(t => t.runCount))` rather than threading the store's window size through `TrendReport`.
+
+**Why:** Keeps `TrendReport` schema simple (no `windowSize` field). The markdown renderer derives it from the data it already has (persistent themes' runCounts). Only works when at least one persistent theme exists; acceptable because the trends section is omitted when empty anyway.
+
+**Trade-off:** Denominator in markdown (`7/7 runs`) may be less than the actual store window size if no theme appears in every run. This is conservative and honest — it shows the actual max frequency observed, not a theoretical ceiling.
+
+### Temporal Ordering: Detect Before Store Update
+
+**Decision:** Run `detectTrends()` BEFORE calling `appendRun()` + `saveThemesStore()`, passing `currentThemes` as a parameter to logically append without mutating.
+
+**Why:** The trend report should reflect "what was true going into this run", not "what we know after updating the store." If detection ran after the update, the current run would appear in the stored history, requiring synthetic removal or double-counting risks.
+
+**Implementation:** CLI orchestrates as:
+1. Load themes store (pre-update state)
+2. `detectTrends({ store, currentThemes })` — store + current themes logically form the window
+3. Add `trends` to summary
+4. Write `summary.json`
+5. Update store via `appendRun()` + save
+6. Render markdown
+
+### Strict Inequality Gotchas
+
+**Emerging window calculation:** Initial implementation used `-1` threshold, causing failures. Fixed with `Math.max(0, runs.length - EMERGING_MAX_AGE_RUNS)` to handle small windows (< 3 runs).
+
+**Fading threshold:** Spec scenarios showed "3 absences is NOT fading yet, 4+ absences IS fading." Requires `runsSinceLastSeen > FADING_MIN_AGE_RUNS` (strict `>`), not `>=`. Off-by-one here changes category membership.
+
+**Emerging first-seen position:** A theme is emerging if `firstPosition > emergingWindowStart` (strict inequality). If `firstPosition === emergingWindowStart`, the theme appeared at the edge of the "recent" window but not strictly within it.
+
+### Stable Multi-Level Sorting
+
+**Decision:** Sort each category with 3-level tie-breaking rules to ensure deterministic output:
+- Persistent: `runCount` desc → `lastSeenRunId` desc → `theme` asc
+- Emerging: `firstSeenRunId` desc → `theme` asc
+- Fading: `runsSinceLastSeen` asc → `lastSeenRunId` desc → `theme` asc
+
+**Why:** Persona expectation item 2 ("deterministic output"). Without stable sorting, the same store could render categories in different orders across runs, breaking the `--replay` contract. Alphabetical theme name as the final tie-breaker ensures stability even when all numeric/timestamp fields match.
+
+### Optional Field Backward Compatibility
+
+**Decision:** Added `trends` as an optional field on `RunSummary`. Older `summary.json` files (written before this feature shipped) don't have the field; markdown renderer checks `summary.trends ?? undefined` and omits the section if absent.
+
+**Why:** Non-breaking schema evolution. Pre-existing replay tests against old summaries continue passing. New runs always populate `trends`; old summaries gracefully render without it. Schema version stays at 1 because the field is optional — a breaking change would require bumping to schema version 2.
+
+**Implementation:** TypeScript type marks it optional: `trends?: TrendReport`. Markdown renderer: `if (!trends || all empty) return null;`
+
 <!-- Updated via /compound -->

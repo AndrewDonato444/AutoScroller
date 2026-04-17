@@ -19,6 +19,38 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: Cross-Run Trend Detection
+
+**Pure Function Architecture:**
+- Zero I/O, no `Date.now()`, no mutation for maximum testability
+- Enables deterministic tests with in-memory fixtures, no mocks needed
+- Critical for `--replay` feature where re-running must produce identical output
+
+**Category Precedence via Exclusion Sets:**
+- Compute mutually exclusive categories sequentially (emerging → fading → persistent)
+- Track assigned themes in `Set` objects to enforce no overlap
+- Higher-priority categories claim themes first, residual category gets remainder
+
+**Strict Inequality Gotchas:**
+- Window calculation: `Math.max(0, runs.length - windowSize)` handles small arrays
+- Fading threshold: "absent from 3 runs" means `runsSinceLastSeen > 3` (strict `>`), not `>=`
+- Emerging boundary: `firstPosition > windowStart` (strict) excludes window-edge themes
+
+**Temporal Ordering:**
+- Detect trends BEFORE updating store (snapshot pre-update state)
+- Pass `currentThemes` to logically append without mutating
+- Store update happens afterward to persist new run
+
+**Backward Compatibility:**
+- Added `trends` as optional field on `RunSummary` (non-breaking)
+- Markdown renderer handles missing field gracefully
+- Schema version stays at 1 because field is optional
+
+**Testing:**
+- 16 comprehensive edge case tests (boundaries, small windows, empty arrays)
+- Table-driven test for mature store scenario (8 runs, 4 themes, 3 categories)
+- Verified determinism, purity, sorting stability, category mutual exclusivity
+
 ### 2026-04-17: Writer Interface + NotionWriter
 
 **Orchestrator Interface Design:**

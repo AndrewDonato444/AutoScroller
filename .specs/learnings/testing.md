@@ -310,6 +310,92 @@ expect(noiseSection).not.toContain(' — ');  // ✅ Passes
 
 **When to apply:** Any test that asserts a substring does NOT appear in output. Verify the absence is specific to the section/context you care about, not the entire output.
 
+### Comprehensive Edge Case Coverage for Boundary Logic
+
+**Pattern:** For features with multiple numeric thresholds and boundary conditions, write table-driven tests covering all edge cases around those boundaries.
+
+**Example from Cross-Run Trend Detection:**
+- 2-run threshold (trends become meaningful)
+- 4-run persistent minimum
+- 3-run emerging window
+- 4-run fading minimum (>3 absences)
+- Window size < threshold cases
+- Zero-length arrays
+- Single-category edge cases
+
+**Implementation:**
+```typescript
+// 16 comprehensive tests covering:
+describe('Trend Detection Edge Cases', () => {
+  it('TD-01: Brand-new store (0 runs) returns all empty', () => { ... });
+  it('TD-02: 1 run returns all empty (below 2-run floor)', () => { ... });
+  it('TD-03: 2 runs enables emerging detection', () => { ... });
+  it('TD-04: Persistent requires exactly 4 runs', () => { ... });
+  it('TD-05: Fading requires STRICTLY MORE than 3 absences', () => { ... });
+  it('TD-06: Emerging window calculation with small stores', () => { ... });
+  it('TD-07: Theme at window edge is NOT emerging', () => { ... });
+  // ... 9 more boundary cases
+});
+```
+
+**Why:** Boundary conditions are where off-by-one errors hide. Testing `threshold - 1`, `threshold`, and `threshold + 1` for each rule catches strict vs non-strict inequality bugs. Table-driven tests make it easy to add new edge cases as they're discovered.
+
+**When to apply:** Features with:
+- Multiple numeric thresholds (min/max values)
+- Time windows or sliding windows
+- Category assignment rules with precedence
+- Empty/zero/boundary conditions that trigger different code paths
+
+### Table-Driven Tests for Complex Multi-Threshold Scenarios
+
+**Pattern:** When a feature combines multiple thresholds and produces different outputs based on combinations, use table-driven tests with explicit input/output matrices.
+
+**Example from Cross-Run Trend Detection "Mature store" scenario:**
+```typescript
+it('TD-08: Mature store with all categories populated', () => {
+  const runs = [
+    { runId: '2026-04-09T14-00-00Z', themes: ['agent orchestration', 'indie-dev distribution'] },
+    { runId: '2026-04-10T14-00-00Z', themes: ['agent orchestration', 'indie-dev distribution'] },
+    // ... 6 more runs showing different theme patterns
+  ];
+  
+  const currentThemes = ['agent orchestration', 'claude code workflows', 'sales enablement playbooks'];
+  
+  const report = detectTrends({ store: { runs }, currentThemes });
+  
+  // Verify exact category membership
+  expect(report.persistent).toHaveLength(2);
+  expect(report.persistent[0].theme).toBe('agent orchestration');  // 9/9 runs
+  expect(report.persistent[1].theme).toBe('indie-dev distribution');  // 6/9 runs
+  
+  expect(report.emerging).toHaveLength(1);
+  expect(report.emerging[0].theme).toBe('sales enablement playbooks');  // First seen current
+  
+  expect(report.fading).toHaveLength(1);
+  expect(report.fading[0].theme).toBe('sports betting odds');  // 5 runs absent
+  
+  // Verify 'claude code workflows' is in NO category (only 3/9 runs, too new for persistent)
+  const allThemes = [
+    ...report.persistent.map(t => t.theme),
+    ...report.emerging.map(t => t.theme),
+    ...report.fading.map(t => t.theme),
+  ];
+  expect(allThemes).not.toContain('claude code workflows');
+});
+```
+
+**Why:** Complex scenarios (8-run history, 4 distinct themes, 3 categories, precedence rules) are hard to reason about mentally. A single comprehensive test with inline expectations documents:
+1. The exact input state (8-run window with theme frequencies)
+2. Which themes land in which categories
+3. Which themes are intentionally excluded
+
+If thresholds change or precedence rules shift, this test catches the impact immediately.
+
+**When to apply:** 
+- Features with multiple interacting rules (thresholds + precedence + exclusions)
+- When a single scenario exercises all code paths
+- When the "real world" case is complex enough that edge cases alone don't give confidence
+
 ### Test Fixture Helpers Improve Readability
 
 **Pattern:** Extract helper functions to create test fixtures with sensible defaults:
