@@ -63,7 +63,7 @@ describe('Config Loader', () => {
       expect(config.browser.headless).toBe(false);
       expect(config.browser.viewport).toEqual({ width: 1280, height: 900 });
 
-      expect(config.output.format).toBe('markdown');
+      expect(config.output.destinations).toEqual(['markdown']);
 
       expect(config.claude.model).toBe('claude-sonnet-4-6');
     });

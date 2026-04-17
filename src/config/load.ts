@@ -141,7 +141,49 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Confi
   // Post-process config
   config = postProcessConfig(config, home);
 
+  // Validate Notion configuration if needed
+  validateNotionConfig(config, configPath);
+
   return config;
+}
+
+/**
+ * Validate Notion configuration if destination includes 'notion'.
+ */
+function validateNotionConfig(config: Config, configPath: string): void {
+  // Check if destinations includes 'notion'
+  if (!config.output.destinations.includes('notion')) {
+    return; // Notion not enabled, validation not needed
+  }
+
+  // Check if notion config exists
+  if (!config.notion) {
+    console.error(`config: destinations includes 'notion' but notion.parentPageId is not configured`);
+    console.error(`file: ${configPath}`);
+    throw new Error(`config: destinations includes 'notion' but notion.parentPageId is not configured`);
+  }
+
+  // Check if parentPageId is set
+  if (!config.notion.parentPageId) {
+    console.error(`config: destinations includes 'notion' but notion.parentPageId is not configured`);
+    console.error(`file: ${configPath}`);
+    throw new Error(`config: destinations includes 'notion' but notion.parentPageId is not configured`);
+  }
+
+  // Check if token is set (either in config or env)
+  const hasToken = config.notion.token || process.env.NOTION_TOKEN;
+  if (!hasToken) {
+    console.error(`config: destinations includes 'notion' but neither config.notion.token nor NOTION_TOKEN env is set`);
+    console.error(`file: ${configPath}`);
+    throw new Error(`config: destinations includes 'notion' but neither config.notion.token nor NOTION_TOKEN env is set`);
+  }
+
+  // Check if destinations array is not empty
+  if (config.output.destinations.length === 0) {
+    console.error(`config: output.destinations must have at least one writer`);
+    console.error(`file: ${configPath}`);
+    throw new Error(`config: output.destinations must have at least one writer`);
+  }
 }
 
 /**

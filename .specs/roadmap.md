@@ -22,8 +22,8 @@
 | Status | Count |
 |--------|-------|
 | ✅ Completed | 13 |
-| 🔄 In Progress | 0 |
-| ⬜ Pending | 3 |
+| 🔄 In Progress | 1 |
+| ⬜ Pending | 2 |
 | ⏸️ Blocked | 0 |
 
 **Last updated**: 2026-04-17
@@ -71,7 +71,7 @@
 
 | # | Feature | Source | Jira | Complexity | Deps | Status |
 |---|---------|--------|------|------------|------|--------|
-| 20 | Writer interface + NotionWriter implementation | vision | - | L | 13 | ⬜ |
+| 20 | Writer interface + NotionWriter implementation | vision | - | L | 13 | 🔄 |
 | 21 | Cross-run trend detection (themes drifting over N runs) | vision | - | M | 11, 12 | ⬜ |
 | 22 | Vision-based fallback when DOM selectors break | vision | - | L | 6 | ⬜ |
 

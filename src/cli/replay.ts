@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { expandHomeDir } from '../scroll/scroller.js';
 import { summarizeRun, type SummarizerInput, type RunSummary } from '../summarizer/summarizer.js';
 import { loadThemesStore, recentThemes } from '../state/rolling-themes.js';
-import { writeSummaryMarkdown } from '../writer/markdown.js';
+import { runWriters, type Writer, type WriteContext } from '../writer/writer.js';
+import { markdownWriter } from '../writer/markdown.js';
+import { createNotionWriter } from '../writer/notion.js';
 import type { ExtractedPost } from '../extract/extractor.js';
 
 const EXIT_SUCCESS = 0;
@@ -26,6 +28,41 @@ interface RawJsonPayload {
  */
 function formatDisplayPath(path: string): string {
   return path.replace(expandHomeDir('~'), '~');
+}
+
+/**
+ * Build writers array from config, ensuring markdown is always first.
+ */
+function buildWriters(config: Config): Writer[] {
+  const writers: Writer[] = [];
+  const destinations = config.output.destinations;
+
+  // Always put markdown first if it's in the list
+  if (destinations.includes('markdown')) {
+    writers.push(markdownWriter);
+  }
+
+  // Add notion if configured
+  if (destinations.includes('notion')) {
+    if (!config.notion) {
+      throw new Error('notion destination enabled but notion config is missing');
+    }
+
+    const token = config.notion.token || process.env.NOTION_TOKEN;
+    if (!token) {
+      throw new Error('notion destination enabled but no token provided');
+    }
+
+    writers.push(
+      createNotionWriter({
+        token,
+        parentPageId: config.notion.parentPageId,
+        model: config.claude.model,
+      })
+    );
+  }
+
+  return writers;
 }
 
 /**
@@ -196,24 +233,54 @@ export async function handleReplay(config: Config, runId: string, dryRun: boolea
       const summaryJsonPath = join(runDir, 'summary.json');
       await writeSummaryJson(runDir, summarizerResult.summary);
 
-      // Write summary.md
-      const mdResult = await writeSummaryMarkdown({
+      // Build writers and run them
+      const writers = buildWriters(config);
+      const context: WriteContext = {
+        runId,
         runDir,
-        summary: summarizerResult.summary,
         rawJsonPath,
         summaryJsonPath,
         displayRawJsonPath: formatDisplayPath(rawJsonPath),
         displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
+      };
+
+      const { receipts, markdownSucceeded, anySucceeded } = await runWriters({
+        writers,
+        summary: summarizerResult.summary,
+        context,
       });
 
-      // Print success message
+      // Build success message
       const themeCount = summarizerResult.summary.themes.length;
       const worthClickingCount = summarizerResult.summary.worthClicking.length;
-      console.log(
-        `replayed ${runId}: summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — rendered to ${formatDisplayPath(mdResult.summaryMdPath)}`
-      );
+      let summaryLine = `replayed ${runId}: summarized (${themeCount} themes, ${worthClickingCount} worth clicking)`;
 
-      process.exit(EXIT_SUCCESS);
+      // Append successful writer locations
+      receipts
+        .filter(r => r.receipt.ok)
+        .forEach(r => {
+          if (r.receipt.ok) {
+            summaryLine += ` — rendered to ${r.receipt.displayLocation}`;
+          }
+        });
+
+      console.log(summaryLine);
+
+      // Print any writer failures
+      receipts
+        .filter(r => !r.receipt.ok)
+        .forEach(r => {
+          if (!r.receipt.ok) {
+            console.log(`${r.id} render failed: ${r.receipt.reason}`);
+          }
+        });
+
+      // Exit with success if markdown succeeded, error otherwise
+      if (markdownSucceeded) {
+        process.exit(EXIT_SUCCESS);
+      } else {
+        process.exit(EXIT_ERROR);
+      }
     } else {
       // Summarizer failed - write error file
       await writeSummaryErrorJson(runDir, runId, summarizerResult.reason, summarizerResult.rawResponse);

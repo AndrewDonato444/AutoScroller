@@ -76,7 +76,7 @@ function createTestConfig(configPath: string, overrides: Record<string, any> = {
     output: {
       dir: testRunsDir,
       state: testStateDir,
-      format: 'markdown',
+      destinations: ['markdown'],
     },
     claude: {
       model: 'claude-sonnet-4-6',
@@ -103,7 +103,7 @@ ${config.interests.map((i: string) => `  - ${i}`).join('\n')}
 output:
   dir: ${config.output.dir}
   state: ${config.output.state}
-  format: ${config.output.format}
+  destinations: [${config.output.destinations.join(', ')}]
 
 claude:
   model: ${config.claude.model}

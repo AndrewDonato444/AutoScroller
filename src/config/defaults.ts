@@ -25,7 +25,7 @@ export const defaultConfig = {
   output: {
     dir: '~/scrollproxy/runs',
     state: '~/scrollproxy/state',
-    format: 'markdown' as const,
+    destinations: ['markdown'] as const,
   },
 
   claude: {
@@ -65,7 +65,12 @@ interests:
 output:
   dir: ~/scrollproxy/runs   # Run outputs (JSON, markdown)
   state: ~/scrollproxy/state # State tracking
-  format: markdown          # Output format (only 'markdown' in v1)
+  destinations: [markdown]  # Output destinations: markdown, notion
+
+# Notion integration (optional — only needed if 'notion' is in destinations)
+# notion:
+#   parentPageId: your-page-id-here  # Notion page UUID
+#   # token: secret_...  # Optional; uses NOTION_TOKEN env var if not set
 
 # Claude API settings
 claude:

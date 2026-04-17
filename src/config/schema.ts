@@ -28,8 +28,13 @@ export const configSchema = z.object({
   output: z.object({
     dir: z.string(),
     state: z.string(),
-    format: z.literal('markdown'),
+    destinations: z.array(z.enum(['markdown', 'notion'])).default(['markdown']),
   }),
+
+  notion: z.object({
+    token: z.string().optional(),
+    parentPageId: z.string(),
+  }).optional(),
 
   claude: z.object({
     model: z.string(),

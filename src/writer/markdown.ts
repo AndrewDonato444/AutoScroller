@@ -1,4 +1,5 @@
 import type { RunSummary } from '../summarizer/summarizer.js';
+import type { Writer, WriteContext, WriteReceipt } from './writer.js';
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -207,3 +208,38 @@ export async function writeSummaryMarkdown(params: {
 
   return { summaryMdPath };
 }
+
+/**
+ * MarkdownWriter implementation of the Writer interface.
+ */
+export const markdownWriter: Writer = {
+  id: 'markdown',
+
+  async write(summary: RunSummary, context: WriteContext): Promise<WriteReceipt> {
+    try {
+      const { summaryMdPath } = await writeSummaryMarkdown({
+        runDir: context.runDir,
+        summary,
+        rawJsonPath: context.rawJsonPath,
+        summaryJsonPath: context.summaryJsonPath,
+        displayRawJsonPath: context.displayRawJsonPath,
+        displaySummaryJsonPath: context.displaySummaryJsonPath,
+      });
+
+      const displayPath = context.displayRawJsonPath
+        ? summaryMdPath.replace(context.runDir, context.displayRawJsonPath.replace('/raw.json', ''))
+        : summaryMdPath;
+
+      return {
+        ok: true,
+        kind: 'file',
+        displayLocation: displayPath,
+      };
+    } catch (error: any) {
+      return {
+        ok: false,
+        reason: `markdown: ${error.message}`,
+      };
+    }
+  },
+};

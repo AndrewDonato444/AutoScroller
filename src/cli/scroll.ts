@@ -5,7 +5,9 @@ import { writeRawJson, generateRunId } from '../writer/raw-json.js';
 import { loadDedupCache, saveDedupCache, partitionPosts, appendHashes } from '../state/dedup-cache.js';
 import { summarizeRun, type SummarizerInput } from '../summarizer/summarizer.js';
 import { loadThemesStore, saveThemesStore, appendRun, recentThemes } from '../state/rolling-themes.js';
-import { writeSummaryMarkdown } from '../writer/markdown.js';
+import { runWriters, type Writer, type WriteContext } from '../writer/writer.js';
+import { markdownWriter } from '../writer/markdown.js';
+import { createNotionWriter } from '../writer/notion.js';
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -23,6 +25,41 @@ const EXIT_ERROR = 1;
  */
 function formatDisplayPath(path: string): string {
   return path.replace(expandHomeDir('~'), '~');
+}
+
+/**
+ * Build writers array from config, ensuring markdown is always first.
+ */
+function buildWriters(config: Config): Writer[] {
+  const writers: Writer[] = [];
+  const destinations = config.output.destinations;
+
+  // Always put markdown first if it's in the list
+  if (destinations.includes('markdown')) {
+    writers.push(markdownWriter);
+  }
+
+  // Add notion if configured
+  if (destinations.includes('notion')) {
+    if (!config.notion) {
+      throw new Error('notion destination enabled but notion config is missing');
+    }
+
+    const token = config.notion.token || process.env.NOTION_TOKEN;
+    if (!token) {
+      throw new Error('notion destination enabled but no token provided');
+    }
+
+    writers.push(
+      createNotionWriter({
+        token,
+        parentPageId: config.notion.parentPageId,
+        model: config.claude.model,
+      })
+    );
+  }
+
+  return writers;
 }
 
 /**
@@ -130,10 +167,10 @@ async function writeRawJsonAndUpdateCache(params: {
 }
 
 /**
- * Run summarizer and handle success/error paths including markdown rendering.
+ * Run summarizer and handle success/error paths including writer orchestration.
  * Returns { success: true, summaryLine } on success or { success: false, summaryLine } on failure.
  */
-async function runSummarizerAndRenderMarkdown(params: {
+async function runSummarizerAndWriters(params: {
   posts: ExtractedPost[];
   newPosts: ExtractedPost[];
   config: Config;
@@ -142,7 +179,7 @@ async function runSummarizerAndRenderMarkdown(params: {
   rawJsonPath: string;
   endedAt: Date;
   summaryLine: string;
-}): Promise<{ success: boolean; summaryLine: string; errorDetail?: string }> {
+}): Promise<{ success: boolean; summaryLine: string; errorDetails: string[] }> {
   const { posts, newPosts, config, runId, runDir, rawJsonPath, endedAt, summaryLine } = params;
 
   // Load themes store to get prior themes
@@ -176,7 +213,7 @@ async function runSummarizerAndRenderMarkdown(params: {
     });
     await saveThemesStore(updatedStore, config.output.state);
 
-    // Update summary line
+    // Update summary line with summarizer stats
     const themeCount = summarizerResult.summary.themes.length;
     const worthClickingCount = summarizerResult.summary.worthClicking.length;
     let updatedSummaryLine = summaryLine.replace(
@@ -184,29 +221,46 @@ async function runSummarizerAndRenderMarkdown(params: {
       ` — summarized (${themeCount} themes, ${worthClickingCount} worth clicking) — saved to ${formatDisplayPath(rawJsonPath)}`
     );
 
-    // Write markdown summary
-    try {
-      const mdResult = await writeSummaryMarkdown({
-        runDir,
-        summary: summarizerResult.summary,
-        rawJsonPath,
-        summaryJsonPath,
-        displayRawJsonPath: formatDisplayPath(rawJsonPath),
-        displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
+    // Build writers and run them
+    const writers = buildWriters(config);
+    const context: WriteContext = {
+      runId,
+      runDir,
+      rawJsonPath,
+      summaryJsonPath,
+      displayRawJsonPath: formatDisplayPath(rawJsonPath),
+      displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
+    };
+
+    const { receipts, markdownSucceeded, anySucceeded } = await runWriters({
+      writers,
+      summary: summarizerResult.summary,
+      context,
+    });
+
+    // Append successful writer locations to summary line
+    receipts
+      .filter(r => r.receipt.ok)
+      .forEach(r => {
+        if (r.receipt.ok) {
+          updatedSummaryLine += ` — rendered to ${r.receipt.displayLocation}`;
+        }
       });
 
-      // Append markdown path to summary line
-      updatedSummaryLine += ` — rendered to ${formatDisplayPath(mdResult.summaryMdPath)}`;
+    // Collect error details for failed writers
+    const errorDetails: string[] = [];
+    receipts
+      .filter(r => !r.receipt.ok)
+      .forEach(r => {
+        if (!r.receipt.ok) {
+          errorDetails.push(`${r.id} render failed: ${r.receipt.reason}`);
+        }
+      });
 
-      return { success: true, summaryLine: updatedSummaryLine };
-    } catch (mdError: any) {
-      // Markdown render failed - summary.json and raw.json stay intact
-      return {
-        success: false,
-        summaryLine: updatedSummaryLine,
-        errorDetail: `markdown render failed: ${mdError.message}`,
-      };
-    }
+    // Determine success based on markdown writer
+    const success = markdownSucceeded;
+
+    return { success, summaryLine: updatedSummaryLine, errorDetails };
   } else {
     // Summarizer failed - write error file
     await writeSummaryErrorJson(runDir, runId, summarizerResult.reason, summarizerResult.rawResponse);
@@ -217,7 +271,7 @@ async function runSummarizerAndRenderMarkdown(params: {
       ` — summarizer failed: ${summarizerResult.reason} — saved to ${formatDisplayPath(rawJsonPath)}`
     );
 
-    return { success: false, summaryLine: updatedSummaryLine };
+    return { success: false, summaryLine: updatedSummaryLine, errorDetails: [] };
   }
 }
 
@@ -355,9 +409,9 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
         process.exit(EXIT_SUCCESS);
       }
 
-      // Run summarizer after successful dedup cache update
+      // Run summarizer and writers after successful dedup cache update
       try {
-        const summarizerResult = await runSummarizerAndRenderMarkdown({
+        const result = await runSummarizerAndWriters({
           posts,
           newPosts,
           config,
@@ -368,14 +422,16 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
           summaryLine,
         });
 
-        if (summarizerResult.success) {
-          console.log(summarizerResult.summaryLine);
+        console.log(result.summaryLine);
+
+        // Print any error details (failed writers)
+        result.errorDetails.forEach(detail => {
+          console.log(detail);
+        });
+
+        if (result.success) {
           process.exit(EXIT_SUCCESS);
         } else {
-          console.log(summarizerResult.summaryLine);
-          if (summarizerResult.errorDetail) {
-            console.log(summarizerResult.errorDetail);
-          }
           process.exit(EXIT_ERROR);
         }
       } catch (summarizerError: any) {
