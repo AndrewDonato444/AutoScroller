@@ -269,6 +269,169 @@ configSchema.parse(rawConfig);  // ZodError: expected number, got string
 
 ## Other
 
+### Pure Function Architecture for Deterministic Output
+
+**Pattern:** For functions that produce output files (markdown, JSON, reports), make them pure — no I/O, no `Date.now()`, no `process.env` reads.
+
+```typescript
+// GOOD: Pure function — all inputs explicit
+export function renderSummaryMarkdown(
+  summary: RunSummary, 
+  context: MarkdownContext
+): string {
+  // Timestamp comes from summary.summarizedAt, not Date.now()
+  const timestamp = formatTimestamp(summary.summarizedAt);
+  
+  // Paths come from context, not process.cwd() or homedir()
+  const rawPath = context.displayRawJsonPath || context.rawJsonPath;
+  
+  // Build markdown string...
+  return lines.join('\n');
+}
+
+// BAD: Impure — reads system state
+export function renderSummaryMarkdown(summary: RunSummary): string {
+  const timestamp = new Date().toISOString();  // ❌ Non-deterministic
+  const rawPath = join(homedir(), 'scrollproxy/...'); // ❌ System-dependent
+  // ...
+}
+```
+
+**Why:** 
+1. **Deterministic** — Same inputs always produce same output, byte-for-byte
+2. **Testable** — No mocks needed, just call the function
+3. **Replayable** — Re-rendering old data produces identical output
+4. **Diffable** — Operator can `diff` across runs and see content changes, not timestamp noise
+
+**When to apply:** Any function that produces user-facing output files (markdown, reports, exports). Separate I/O concerns (reading/writing files) from rendering logic.
+
+### UTC Timestamp Formatting for Cross-Machine Consistency
+
+**Pattern:** Format timestamps using UTC date parts, not locale-dependent methods.
+
+```typescript
+// GOOD: UTC formatting
+function formatTimestamp(isoString: string): string {
+  const date = new Date(isoString);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
+// BAD: Locale-dependent
+function formatTimestamp(isoString: string): string {
+  return new Date(isoString).toLocaleString();  // ❌ Different on every machine
+}
+```
+
+**Why:** Two operators in different timezones rendering the same `summary.json` should produce byte-identical markdown. Locale-dependent formatting breaks determinism and adds noise to diffs. The UTC label in the output makes it clear the time isn't local.
+
+**When to apply:** Any timestamp formatting in output files that should be deterministic across machines. Especially important for features like `--replay` where re-rendering should be idempotent.
+
+### Different Formatting for Error States vs Success States
+
+**Pattern:** Use italic placeholders for empty content (error/gap states), plain text for legitimate zero counts (success states).
+
+```typescript
+// Empty content sections (gaps) — italic placeholders
+if (worthClicking.length === 0) {
+  return '_Nothing worth clicking this run._\n';
+}
+
+if (voices.length === 0) {
+  return '_No standout voices this run._\n';
+}
+
+// Legitimate zero counts (success) — plain text
+if (noise.count === 0) {
+  return 'No noise flagged.\n';  // No italics — this is good!
+}
+```
+
+**Why:** Formatting conveys meaning. Italics signal "this section is usually filled but was empty this time" (a gap). Plain text signals "zero is a valid, positive outcome" (the feed was clean). The operator scans the markdown and immediately knows whether empty sections are unexpected.
+
+**When to apply:** Any output format with optional sections that can be empty for different reasons (no data found vs. no issues detected). Make the formatting match the semantic meaning.
+
+### Return Objects Over Exceptions for Explicit Error Handling
+
+**Pattern:** For orchestration functions that combine multiple operations, return `{ success, data?, error? }` instead of throwing.
+
+```typescript
+// GOOD: Explicit success/failure in return type
+async function runSummarizerAndRenderMarkdown(params): Promise<{
+  success: boolean;
+  summaryLine: string;
+  errorDetail?: string;
+}> {
+  const summarizerResult = await summarizeRun(input);
+  
+  if (summarizerResult.status === 'ok') {
+    try {
+      const mdResult = await writeSummaryMarkdown({ ... });
+      return { success: true, summaryLine: `... — rendered to ${mdResult.path}` };
+    } catch (mdError: any) {
+      return { 
+        success: false, 
+        summaryLine: `... — summarized`,
+        errorDetail: `markdown render failed: ${mdError.message}` 
+      };
+    }
+  } else {
+    return { success: false, summaryLine: `... — summarizer failed` };
+  }
+}
+
+// Usage
+const result = await runSummarizerAndRenderMarkdown(params);
+if (result.success) {
+  console.log(result.summaryLine);
+  process.exit(0);
+} else {
+  console.log(result.summaryLine);
+  if (result.errorDetail) {
+    console.log(result.errorDetail);
+  }
+  process.exit(1);
+}
+```
+
+**Why:** Makes error handling explicit at call sites. The caller can see all possible outcomes in the type signature. Throwing exceptions hides failure modes and makes it harder to provide contextual error messages or partial results.
+
+**When to apply:** Orchestration functions that combine multiple steps where some steps can fail but you want to preserve partial results or provide detailed error context. Don't use for simple utility functions (those should throw).
+
+### Simple String Concatenation Over Templating Libraries
+
+**Pattern:** For stable output formats (markdown, CLI messages), use string concatenation instead of adding templating dependencies.
+
+```typescript
+// GOOD: Simple concatenation
+const lines: string[] = [];
+lines.push(`# ScrollProxy — ${timestamp}\n`);
+lines.push(`**Verdict**: ${summary.feedVerdict}\n`);
+lines.push(`## Themes\n`);
+lines.push(themes.map(t => `- ${t}`).join('\n') + '\n');
+return lines.join('\n');
+
+// BAD: Template library for simple format
+import Handlebars from 'handlebars';
+const template = Handlebars.compile(templateString);
+return template({ summary, timestamp, themes });
+```
+
+**Why:** 
+1. **Zero dependencies** — No supply-chain risk, no version churn
+2. **Explicit** — The format is visible in the code, not hidden in a template file
+3. **Simple** — For stable formats (markdown headers, CLI output), concatenation is clearer than templates
+4. **Personal tool simplicity** — Vision principle 8
+
+**When to apply:** CLI output, markdown rendering, configuration file generation — any format that's stable and doesn't need i18n or complex conditionals. If the format changes rarely and has < 50 lines of output, concatenation is fine.
+
+**Don't use for:** HTML (XSS risk), SQL (injection risk), or formats with complex escaping rules. Do use templating when you need i18n, partials, or complex conditionals.
+
 ### Avoid Premature Abstraction for Placeholder Stubs
 
 Don't create shared utilities for simple placeholder stubs that will be replaced:

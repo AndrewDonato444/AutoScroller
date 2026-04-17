@@ -19,6 +19,32 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: Markdown Writer
+
+**Pure Function Architecture:**
+- No I/O, no Date.now(), no env reads for deterministic output (`renderSummaryMarkdown`)
+- UTC timestamp formatting using `getUTCFullYear` etc. to avoid locale-dependent output
+- Same inputs always produce byte-identical output (critical for `--replay` feature)
+
+**Refactoring Patterns:**
+- Extracted 11 constants (schema version, filenames, section headers, labels, placeholders)
+- Extracted helper functions: `writeRawJsonAndUpdateCache`, `runSummarizerAndRenderMarkdown`
+- Reduced `handleScroll` from 221 → 165 lines (26% reduction)
+- Return objects over exceptions: `{ success, summaryLine, errorDetail? }`
+
+**Testing:**
+- 19 tests covering all Gherkin scenarios
+- Helper functions for fixtures: `makeSummary`, `makeContext` pattern
+- Test for substring absence requires section isolation (not whole document)
+
+**UI Patterns:**
+- Different formatting for error states (italic placeholders) vs success states (plain text)
+- No escaping for trusted Claude output (tool-use schema, not user input)
+- Display paths (~-compressed) vs absolute paths (for file ops)
+
+**Dependencies:**
+- Simple string concatenation > templating libraries for stable formats (zero runtime deps)
+
 ### 2026-04-17: Claude Summarizer
 
 **API Patterns:**

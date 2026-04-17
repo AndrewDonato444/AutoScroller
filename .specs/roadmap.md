@@ -21,9 +21,9 @@
 
 | Status | Count |
 |--------|-------|
-| ✅ Completed | 10 |
+| ✅ Completed | 11 |
 | 🔄 In Progress | 0 |
-| ⬜ Pending | 6 |
+| ⬜ Pending | 5 |
 | ⏸️ Blocked | 0 |
 
 **Last updated**: 2026-04-17
@@ -57,7 +57,7 @@
 | 10 | State module (dedup cache — last 10k post hashes) | vision | - | M | 7 | ✅ |
 | 11 | Rolling themes store (last 10 runs) | vision | - | S | 10 | ✅ |
 | 12 | Claude summarizer (themes, worth-clicking, voices, noise) | vision | - | L | 10, 11 | ✅ |
-| 13 | Markdown writer (human summary + links to raw JSON) | vision | - | M | 12 | ⬜ |
+| 13 | Markdown writer (human summary + links to raw JSON) | vision | - | M | 12 | ✅ |
 | 14 | `--replay <run-id>` flag (re-summarize saved raw JSON) | vision | - | S | 12, 13 | ⬜ |
 | 15 | `--dry-run` flag (scroll + extract, skip Claude + write) | vision | - | S | 7 | ⬜ |
 

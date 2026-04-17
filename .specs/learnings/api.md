@@ -179,6 +179,39 @@ const compactPosts = capped.map(post => ({
 
 **When to apply:** Any feature that sends large arrays to LLM APIs. Empirically tune the cap (200 posts worked for this project's feed density).
 
+### Schema Version Validation with Clear Error Messages
+
+**Pattern:** When reading versioned data, validate the schema version and throw a clear error for unsupported versions instead of attempting partial renders.
+
+```typescript
+// Schema version this renderer supports
+const SUPPORTED_SCHEMA_VERSION = 1;
+
+export function renderSummaryMarkdown(summary: RunSummary, context: MarkdownContext): string {
+  // Validate schemaVersion first
+  if (summary.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(
+      `markdown_writer: unsupported schemaVersion ${summary.schemaVersion}, expected ${SUPPORTED_SCHEMA_VERSION}`
+    );
+  }
+  
+  // Proceed with rendering...
+}
+```
+
+**Why:** 
+1. **Fail loudly** — Operator sees exactly which version is unsupported, not a cryptic field access error
+2. **No silent corruption** — Better to not render at all than render garbage from mismatched schemas
+3. **Clear upgrade path** — Error message tells operator what version the tool expects
+4. **Prevents partial renders** — Don't render half a v2 summary using v1 template
+
+**When to apply:** Any function that reads versioned data (summaries, state files, config) and needs to handle schema evolution. Add the check at the entry point before accessing any fields.
+
+**Handling version mismatches:**
+- Version too old → Clear error suggesting upgrade or re-run
+- Version too new → Clear error suggesting binary rollback or re-summarize
+- If partial compatibility is possible → Fork the rendering logic, don't try/catch field access
+
 ### Schema Versioning in JSON Output
 
 **Pattern:** Include a `schemaVersion` field in all JSON outputs to enable future compatibility.

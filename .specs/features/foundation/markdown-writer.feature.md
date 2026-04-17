@@ -330,3 +330,33 @@ N/A — CLI tool, no UI components.
 ## Learnings
 
 <!-- Updated via /compound -->
+
+### Display Path Pattern for User-Facing Output
+
+**Pattern:** Writer functions receive both absolute paths (for file operations) and optional `display*` paths (~-compressed) for user-facing output.
+
+```typescript
+export interface MarkdownContext {
+  rawJsonPath: string;           // Absolute: /Users/.../raw.json
+  summaryJsonPath: string;        // Absolute: /Users/.../summary.json
+  displayRawJsonPath?: string;   // Display: ~/scrollproxy/runs/.../raw.json
+  displaySummaryJsonPath?: string;
+}
+
+// Render uses display paths when available, falls back to absolute
+const rawPath = context.displayRawJsonPath || context.rawJsonPath;
+```
+
+**Why:** CLI layer does the tilde compression once; writer doesn't need to know about `expandHomeDir`. The absolute paths are used for file operations, display paths for footer rendering. Clean separation of concerns.
+
+**Where applied:** `writeSummaryMarkdown` receives display paths from CLI, markdown footer uses them for operator-friendly output.
+
+### No Escaping for Trusted LLM Output
+
+**Decision:** The markdown renderer does NOT escape `why` fields in worth-clicking/voices sections.
+
+**Rationale:** Content comes from Claude via typed tool-use schema (feature 12), not from untrusted user input. If a `why` contains markdown special characters (backticks, brackets), it renders as-is. The operator's markdown viewer handles it.
+
+**Trade-off:** If Claude returned malicious markdown, it would render. But Claude is the trusted source (vision principle 8: "Personal tool simplicity"). Defensive escaping would add complexity for a non-existent threat model.
+
+**Where applied:** `renderWorthClicking` and `renderVoices` use `item.why` verbatim, no `escapeMarkdown()` call.

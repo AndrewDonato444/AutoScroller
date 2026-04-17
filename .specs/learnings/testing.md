@@ -288,6 +288,77 @@ Scaffold tests (like UT-004) verify project-wide conventions such as:
 
 **When to apply:** Any time you create a new first-class module directory (like `src/state/` for the dedup cache), add a `.gitkeep` file immediately, before or alongside the first real implementation file.
 
+### Testing for Substring Absence Requires Section Isolation
+
+**Problem:** Test checked entire document for absence of a substring (` — `) but the substring legitimately appears in some sections (header).
+
+**Solution:** Extract the specific section being tested and assert on that:
+
+```typescript
+// BAD: Checking entire document
+const markdown = renderSummaryMarkdown(summary, context);
+expect(markdown).not.toContain(' — ');  // ❌ Fails — header has " — "
+
+// GOOD: Check only the relevant section
+const noiseMatch = markdown.match(/## Noise\n\n(.*?)\n\n/s);
+expect(noiseMatch).not.toBeNull();
+const noiseSection = noiseMatch![1];
+expect(noiseSection).not.toContain(' — ');  // ✅ Passes
+```
+
+**Why:** When testing for absence, the entire document may have legitimate uses of the pattern you're excluding from a specific section. Isolate the section first, then assert on it.
+
+**When to apply:** Any test that asserts a substring does NOT appear in output. Verify the absence is specific to the section/context you care about, not the entire output.
+
+### Test Fixture Helpers Improve Readability
+
+**Pattern:** Extract helper functions to create test fixtures with sensible defaults:
+
+```typescript
+// Helper to create a minimal RunSummary
+function makeSummary(overrides: Partial<RunSummary> = {}): RunSummary {
+  return {
+    schemaVersion: 1,
+    runId: '2026-04-17T09-02-14Z',
+    summarizedAt: '2026-04-17T09:12:48.000Z',
+    model: 'claude-sonnet-4-6',
+    themes: ['agent orchestration patterns', 'indie-dev distribution'],
+    worthClicking: [],
+    voices: [],
+    noise: { count: 0, examples: [] },
+    newVsSeen: { newCount: 38, seenCount: 46 },
+    feedVerdict: 'mixed',
+    ...overrides,
+  };
+}
+
+// Helper for context with tilde-compressed paths
+function makeContext(overrides: Partial<MarkdownContext> = {}): MarkdownContext {
+  const runId = '2026-04-17T09-02-14Z';
+  return {
+    rawJsonPath: `/Users/andrew/scrollproxy/runs/${runId}/raw.json`,
+    summaryJsonPath: `/Users/andrew/scrollproxy/runs/${runId}/summary.json`,
+    displayRawJsonPath: `~/scrollproxy/runs/${runId}/raw.json`,
+    displaySummaryJsonPath: `~/scrollproxy/runs/${runId}/summary.json`,
+    ...overrides,
+  };
+}
+
+// Usage in tests
+it('renders worth-clicking with correct format', () => {
+  const summary = makeSummary({
+    worthClicking: [{ postId: '1', url: 'https://...', author: '@someone', why: 'Test' }],
+  });
+  const context = makeContext();
+  const markdown = renderSummaryMarkdown(summary, context);
+  expect(markdown).toContain('1. [@someone](https://...) — Test');
+});
+```
+
+**Why:** Tests stay focused on what varies (the specific scenario) instead of repeating boilerplate setup. All 19 markdown writer tests used `makeSummary` and `makeContext`, keeping them readable and maintainable.
+
+**When to apply:** When you have complex data structures (summaries, configs, API responses) that need sensible defaults but vary per test. If 3+ tests construct similar objects, extract a helper.
+
 ### Test Duplication for Self-Containment
 
 Duplicating test helpers (like `runCli`) and config fixtures across test files is acceptable:
