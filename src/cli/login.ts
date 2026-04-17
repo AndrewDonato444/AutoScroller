@@ -1,5 +1,10 @@
-#!/usr/bin/env node
+import type { Config } from '../config/schema.js';
 
-// Placeholder for login command (implemented in future feature)
-console.log('scrollproxy login — not yet implemented');
-process.exit(0);
+/**
+ * Handle the login command.
+ *
+ * This is a stub that will be wired up in feature 4.
+ */
+export async function handleLogin(config: Config): Promise<void> {
+  console.log('scrollproxy login — not yet wired (feature 4)');
+}

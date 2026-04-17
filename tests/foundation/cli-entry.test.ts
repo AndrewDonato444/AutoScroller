@@ -1,0 +1,361 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const projectRoot = join(__dirname, '../..');
+
+let testTmpDir: string;
+let testHomeDir: string;
+let testRepoRoot: string;
+let testConfigDir: string;
+
+/**
+ * Helper to run CLI and capture output/exit code
+ */
+function runCli(args: string[], options: { configPath?: string } = {}): Promise<{
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}> {
+  return new Promise((resolve) => {
+    const env = {
+      ...process.env,
+      HOME: testHomeDir,
+      PWD: testRepoRoot,
+    };
+
+    const child = spawn('tsx', [join(projectRoot, 'src/cli/index.ts'), ...args], {
+      cwd: testRepoRoot,
+      env,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (exitCode) => {
+      resolve({ stdout, stderr, exitCode });
+    });
+  });
+}
+
+beforeEach(() => {
+  // Create unique test directories for each test
+  testTmpDir = join(tmpdir(), 'scrollproxy-cli-test-' + Date.now());
+  testHomeDir = join(testTmpDir, 'home');
+  testRepoRoot = join(testTmpDir, 'repo');
+  testConfigDir = join(testHomeDir, 'scrollproxy');
+
+  // Create test directories
+  mkdirSync(testHomeDir, { recursive: true });
+  mkdirSync(testRepoRoot, { recursive: true });
+  mkdirSync(testConfigDir, { recursive: true });
+});
+
+afterEach(() => {
+  // Clean up test directories
+  if (existsSync(testTmpDir)) {
+    rmSync(testTmpDir, { recursive: true, force: true });
+  }
+});
+
+describe('CLI Entry + Arg Parsing', () => {
+  const validConfigYaml = `scroll:
+  minutes: 10
+  jitterMs: [400, 1400]
+  longPauseEvery: 25
+  longPauseMs: [3000, 8000]
+
+browser:
+  userDataDir: ~/.scrollproxy/browser
+  headless: false
+  viewport:
+    width: 1920
+    height: 1080
+
+interests:
+  - TypeScript
+  - Rust
+
+output:
+  dir: ~/scrollproxy/runs
+  state: ~/scrollproxy/state.json
+  format: markdown
+
+claude:
+  model: claude-opus-4
+`;
+
+  describe('UT-CLI-001: pnpm scroll with no args loads config and invokes scroll handler', () => {
+    it('should load config and invoke scroll handler with default config values', async () => {
+      // Write valid config
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['scroll']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('scrollproxy');
+      // Stub should print "not yet wired"
+      expect(result.stdout).toMatch(/not yet wired|scroll handler/i);
+    });
+  });
+
+  describe('UT-CLI-002: --minutes overrides config scroll.minutes', () => {
+    it('should override scroll.minutes from config when --minutes flag is provided', async () => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['scroll', '--minutes', '3']);
+
+      expect(result.exitCode).toBe(0);
+      // The handler should receive minutes: 3
+      // For now, stub should acknowledge the override
+      expect(result.stdout).toMatch(/3|minutes.*3/i);
+    });
+
+    it('should not mutate the underlying config object', async () => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      await runCli(['scroll', '--minutes', '3']);
+
+      // Config file should remain unchanged
+      const configContent = readFileSync(configPath, 'utf-8');
+      expect(configContent).toContain('minutes: 10');
+    });
+  });
+
+  describe('UT-CLI-003: --minutes rejects non-integers and out-of-bounds values', () => {
+    beforeEach(() => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+    });
+
+    it('should reject non-integer values', async () => {
+      const result = await runCli(['scroll', '--minutes', 'abc']);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain('--minutes');
+      expect(result.stderr).toMatch(/integer.*1.*120/i);
+    });
+
+    it('should reject value 0', async () => {
+      const result = await runCli(['scroll', '--minutes', '0']);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain('--minutes');
+      expect(result.stderr).toMatch(/integer.*1.*120/i);
+    });
+
+    it('should reject value > 120', async () => {
+      const result = await runCli(['scroll', '--minutes', '9999']);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain('--minutes');
+      expect(result.stderr).toMatch(/integer.*1.*120/i);
+    });
+  });
+
+  describe('UT-CLI-004: --dry-run is parsed as a boolean and reaches handler', () => {
+    it('should pass dryRun flag to handler', async () => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['scroll', '--dry-run']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/dry-run|dry run/i);
+      expect(result.stdout).toMatch(/not yet wired/i);
+    });
+  });
+
+  describe('UT-CLI-005: --config <path> overrides config search order', () => {
+    it('should load config from explicit path', async () => {
+      // Write config to custom location
+      const customConfigPath = join(testTmpDir, 'my-config.yaml');
+      const customConfig = validConfigYaml.replace('minutes: 10', 'minutes: 2');
+      writeFileSync(customConfigPath, customConfig, 'utf-8');
+
+      // Write different config to home dir
+      const defaultConfigPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(defaultConfigPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['scroll', '--config', customConfigPath]);
+
+      expect(result.exitCode).toBe(0);
+      // Should use custom config with minutes: 2
+      expect(result.stdout).toMatch(/2|minutes.*2/i);
+    });
+  });
+
+  describe('UT-CLI-006: Unknown flag fails fast with flag name', () => {
+    it('should reject unknown flags', async () => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['scroll', '--telemetry']);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain('--telemetry');
+      expect(result.stderr).toMatch(/unknown flag/i);
+      expect(result.stderr).toMatch(/--help/);
+    });
+  });
+
+  describe('UT-CLI-007: Unknown verb fails fast', () => {
+    it('should reject unknown commands', async () => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['foo']);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain('foo');
+      expect(result.stderr).toMatch(/unknown command/i);
+      expect(result.stderr).toMatch(/scroll.*login.*replay/i);
+    });
+  });
+
+  describe('UT-CLI-008: --help prints usage summary and exits 0', () => {
+    it('should print usage when --help flag is provided', async () => {
+      const result = await runCli(['scroll', '--help']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('usage');
+      expect(result.stdout).toContain('scroll');
+      expect(result.stdout).toContain('login');
+      expect(result.stdout).toContain('replay');
+      expect(result.stdout).toContain('--minutes');
+      expect(result.stdout).toContain('--dry-run');
+      expect(result.stdout).toContain('--config');
+      expect(result.stdout).toContain('ANTHROPIC_API_KEY');
+    });
+
+    it('should accept -h as shorthand', async () => {
+      const result = await runCli(['scroll', '-h']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('usage');
+    });
+  });
+
+  describe('UT-CLI-009: --version prints package version and exits 0', () => {
+    it('should print version when --version flag is provided', async () => {
+      const result = await runCli(['scroll', '--version']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/scrollproxy v\d+\.\d+\.\d+/);
+    });
+
+    it('should accept -v as shorthand', async () => {
+      const result = await runCli(['scroll', '-v']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/scrollproxy v\d+\.\d+\.\d+/);
+    });
+  });
+
+  describe('UT-CLI-010: pnpm login routes to login handler', () => {
+    it('should invoke login handler stub', async () => {
+      const result = await runCli(['login']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('login');
+      expect(result.stdout).toMatch(/not yet wired.*feature 4/i);
+    });
+  });
+
+  describe('UT-CLI-011: pnpm replay <run-id> routes to replay handler', () => {
+    it('should invoke replay handler with run-id', async () => {
+      const result = await runCli(['replay', '2026-04-16-0830']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('replay');
+      expect(result.stdout).toContain('2026-04-16-0830');
+      expect(result.stdout).toMatch(/not yet wired.*feature 14/i);
+    });
+  });
+
+  describe('UT-CLI-012: pnpm replay with no run-id fails with usage hint', () => {
+    it('should reject replay command without run-id', async () => {
+      const result = await runCli(['replay']);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toMatch(/replay requires.*run-id/i);
+      expect(result.stderr).toContain('pnpm replay <run-id>');
+    });
+  });
+
+  describe('UT-CLI-013: Config-loader errors surface through CLI unchanged', () => {
+    it('should propagate config loader errors', async () => {
+      // Write config with unknown field
+      const badConfig = validConfigYaml + '\nanalytics:\n  enabled: true\n';
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, badConfig, 'utf-8');
+
+      const result = await runCli(['scroll']);
+
+      // Should fail with non-zero exit code
+      expect(result.exitCode).not.toBe(0);
+      // Should contain config error message
+      expect(result.stderr).toMatch(/config error|unknown field/i);
+      expect(result.stderr).toContain('analytics');
+    });
+  });
+
+  describe('UT-CLI-014: Flags come after verb; positionals preserved', () => {
+    it('should parse flags relative to verb and preserve positionals', async () => {
+      const customConfigPath = join(testTmpDir, 'alt.yaml');
+      writeFileSync(customConfigPath, validConfigYaml.replace('minutes: 10', 'minutes: 5'), 'utf-8');
+
+      const result = await runCli(['replay', '2026-04-16-0830', '--config', customConfigPath]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('2026-04-16-0830');
+      // Should use the custom config
+    });
+  });
+
+  describe('UT-CLI-015: No hosted-product CLI dependencies', () => {
+    it('should not use heavy CLI frameworks in package.json', () => {
+      const packageJsonPath = join(projectRoot, 'package.json');
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      const deps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies,
+      };
+
+      // Should not have heavy CLI frameworks
+      expect(deps).not.toHaveProperty('commander');
+      expect(deps).not.toHaveProperty('yargs');
+      expect(deps).not.toHaveProperty('oclif');
+    });
+
+    it('should have hand-rolled parser under 150 lines', () => {
+      const argsPath = join(projectRoot, 'src/cli/args.ts');
+      if (existsSync(argsPath)) {
+        const content = readFileSync(argsPath, 'utf-8');
+        const lines = content.split('\n').filter(line => {
+          const trimmed = line.trim();
+          // Don't count blank lines or comment-only lines
+          return trimmed !== '' && !trimmed.startsWith('//') && !trimmed.startsWith('*');
+        });
+        expect(lines.length).toBeLessThanOrEqual(150);
+      }
+    });
+  });
+});

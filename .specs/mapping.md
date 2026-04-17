@@ -18,6 +18,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 | Domain | Feature | Source | Tests | Components | Status |
 |--------|---------|--------|-------|------------|--------|
+| foundation | [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md) | `src/cli/index.ts` | tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Config Loader](.specs/features/foundation/config-loader.feature.md) | `src/config/load.ts` | tests/foundation/config-loader.test.ts | - | implemented |
 | foundation | [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md) | `package.json` | tests/foundation/project-scaffold.test.ts | - | implemented |
 
@@ -30,8 +31,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | stub | 0 |
 | specced | 0 |
 | tested | 0 |
-| implemented | 2 |
-| **Total** | **2** |
+| implemented | 3 |
+| **Total** | **3** |
 
 ---
 
@@ -51,6 +52,7 @@ _None_
 
 ### Implemented
 
+- [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md)
 - [Config Loader](.specs/features/foundation/config-loader.feature.md)
 - [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md)
 

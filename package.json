@@ -9,8 +9,8 @@
   },
   "scripts": {
     "scroll": "tsx src/index.ts",
-    "login": "tsx src/cli/login.ts",
-    "replay": "tsx src/cli/replay.ts",
+    "login": "tsx src/login.ts",
+    "replay": "tsx src/replay.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
