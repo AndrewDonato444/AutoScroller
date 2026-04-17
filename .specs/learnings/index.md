@@ -19,6 +19,24 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-16: Extractor
+
+**TypeScript:**
+- Control flow analysis doesn't narrow discriminated unions across `page.evaluate()` boundaries → use explicit type assertions after runtime checks
+- Destructuring with type assertion after discriminant check is cleaner than complex type guards
+
+**Refactoring:**
+- Extract constants for regex duplication (4 instances → 1 constant)
+- Extract helper functions to consolidate duplicated logic (~20 lines across 4 places → 1 function)
+- Don't break up functions when splitting would require multiple browser round-trips (performance concern)
+- Don't abstract error handling when field names and defaults differ per case
+- Don't refactor appropriately-sized orchestration functions (~60-70 lines showing clear sequential steps)
+
+**Spec Drift:**
+- Hypothetical selector names in spec vs actual implementation (spec: `METRIC_SELECTORS`, code: aria-label substring matching)
+- Root cause: spec drafted before implementation made different choices, wasn't updated when feature landed
+- Fix: update spec to enumerate actual constants and explain implementation choice
+
 ### 2026-04-16: Scroller
 
 **Helper Extraction:**

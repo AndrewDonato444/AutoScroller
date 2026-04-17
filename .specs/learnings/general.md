@@ -6,6 +6,47 @@ Patterns that don't fit other categories.
 
 ## Code Style
 
+### TypeScript Control Flow Analysis Across Function Boundaries
+
+**Limitation:** TypeScript's control flow analysis doesn't narrow discriminated unions when the discriminant property comes from across a function boundary (like `page.evaluate()`).
+
+**Problem:** After checking a discriminant property from `page.evaluate()`, TypeScript doesn't narrow the union type:
+
+```typescript
+const result = await page.evaluate(() => {
+  if (condition) {
+    return { hasData: false };
+  }
+  return { hasData: true, value: "...", ... };
+});
+
+if (!result.hasData) {
+  return null;
+}
+
+// TypeScript still thinks result could be { hasData: false }
+const value = result.value;  // ❌ Error: Property 'value' does not exist
+```
+
+**Solution:** Use explicit type assertion after the discriminant check:
+
+```typescript
+if (!result.hasData) {
+  return null;
+}
+
+// Type assertion after runtime check
+const { value, ... } = result as {
+  hasData: true;
+  value: string;
+  ...
+};
+```
+
+**Why:** The function boundary breaks TypeScript's control flow narrowing. Explicit type assertions after runtime checks are cleaner than complex type guards. This pattern is especially common with Playwright's `page.evaluate()`.
+
+**When to apply:** Any time you use a discriminated union returned from `page.evaluate()`, async functions, or other cross-boundary patterns where TypeScript can't track control flow.
+
 ### Type Guards for Union Types Before Type-Specific Operations
 
 When a value has a union type like `string | boolean`, add an explicit type guard before operations that require a specific type:
@@ -281,6 +322,21 @@ console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
 
 **Extract Till You Drop:** Keep extracting until each function has a single responsibility and is <30 lines. Stop when extraction creates more coupling than it removes (6+ parameters is a signal to stop).
 
+**Don't extract when it hurts performance:**
+- Functions that orchestrate sequential browser operations (DOM queries, evaluations) should stay together to minimize round-trips
+- Example: `extractQuotedPost()` at 128 lines does all quoted post extraction in a single `page.evaluate()` call — splitting into multiple functions would require multiple round-trips and hurt performance
+- Rule: If splitting requires multiple browser context switches, keep it together even if it's long
+
+**Don't abstract when field names and defaults differ:**
+- If similar error handling blocks have different field names or default values, abstracting won't improve clarity
+- Example: Four metric extractions (replies, reposts, likes, views) each have custom field names and null defaults — extracting a generic "extract metric" helper would require passing field names as parameters, making call sites harder to read
+- Rule: If abstraction requires parameterizing what makes each case unique, inline is clearer
+
+**Don't refactor appropriately-sized orchestration functions:**
+- Functions that clearly show sequential steps in ~60-70 lines don't need extraction
+- Example: `parseArticle()` at 66 lines shows: extract permalink → validate → extract author → extract text → extract timestamp → extract metrics → extract media → extract repost info → extract quoted post → assemble result
+- Rule: If the function reads like a clear recipe and fits on one screen, leave it alone
+
 ### Exit Codes at Module Level
 
 Extract exit codes from function scope to module level for better organization:
@@ -338,6 +394,83 @@ ensureUserDataDir(userDataDir);
 ```
 
 **Why:** Path expansion and validation are error-prone and need to happen in a specific order (expand, then validate, then create). Extracting to helpers makes the main function's intent clear and ensures the operations happen consistently. The main function went from 108 to ~75 lines — readable without being over-abstracted.
+
+### Extract Regex Patterns to Constants When Used in Browser Context
+
+When the same regex pattern is used multiple times, especially when passed to browser context via `page.evaluate()`, extract it to a constant:
+
+```typescript
+// BAD: Duplicated regex pattern in 4 places
+await page.evaluate(() => {
+  const match = ariaLabel.match(/^([\d.,kKmM]+)/);  // Duplicated!
+  // ...
+});
+
+// GOOD: Single constant passed to browser context
+const METRIC_VALUE_PATTERN = /^([\d.,kKmM]+)/;
+
+await page.evaluate(({ metricPattern }) => {
+  const pattern = new RegExp(metricPattern);
+  const match = ariaLabel.match(pattern);
+  // ...
+}, { metricPattern: METRIC_VALUE_PATTERN.source });
+```
+
+**Why:** 
+1. Single source of truth for the pattern
+2. Can't reference constants directly in `page.evaluate()` — must pass `.source` as parameter
+3. Eliminates duplication (4 instances → 1 constant)
+
+**When to apply:** Any regex used 2+ times, especially in browser context functions.
+
+### Extract Helper Functions to Consolidate Duplicated Logic
+
+When similar code blocks appear 3-4 times with only data differences, extract to a helper function:
+
+```typescript
+// BAD: Duplicated failure recording (~20 lines × 4 metrics)
+if (rawReplies === null && parsedReplies === null) {
+  failures.push({
+    field: 'metrics.replies',
+    postIdOrIndex: postId,
+    tickIndex,
+    reason: 'metric element not found',
+  });
+}
+if (rawReposts === null && parsedReposts === null) {
+  failures.push({ /* ... */ });
+}
+// ... 2 more times for likes and views
+
+// GOOD: Single helper function
+function recordMetricFailure(
+  metricName: string,
+  rawValue: string | null,
+  parsedValue: number | null,
+  postId: string,
+  tickIndex: number,
+  failures: SelectorFailure[]
+): void {
+  if (rawValue === null && parsedValue === null) {
+    failures.push({
+      field: `metrics.${metricName}`,
+      postIdOrIndex: postId,
+      tickIndex,
+      reason: 'metric element not found',
+    });
+  }
+}
+
+// Usage
+recordMetricFailure('replies', rawReplies, parsedReplies, postId, tickIndex, failures);
+recordMetricFailure('reposts', rawReposts, parsedReposts, postId, tickIndex, failures);
+recordMetricFailure('likes', rawLikes, parsedLikes, postId, tickIndex, failures);
+recordMetricFailure('views', rawViews, parsedViews, postId, tickIndex, failures);
+```
+
+**Why:** Eliminates ~15 lines of duplicated code while improving maintainability. If the failure recording logic changes, update one function instead of four blocks.
+
+**When to apply:** Similar blocks repeated 3+ times where only data (field names, values) differs.
 
 ### Extract URL Constants for Maintainability
 
@@ -446,3 +579,17 @@ And if `onTick` throws, the error is logged as `tick <N> hook error: <message>`
 **Why:** Prevents drift between spec, code, and tests. The spec clarifies that `tickIndex: 0` is the first tick, while the error message uses `tickIndex + 1` for human readability ("tick 1 hook error" when `tickIndex: 0` throws). Without this note, drift agents flag a mismatch between 0-based code and 1-based error messages.
 
 **When to apply:** Any time code uses 0-based indexing but user-facing output (logs, errors, CLI messages) uses 1-based counting, document the mapping in the spec.
+
+### Spec Drift: Hypothetical Names vs Actual Implementation Choices
+
+**Problem:** Spec listed hypothetical constant names (e.g., `METRIC_SELECTORS`, `MEDIA_SELECTORS`) before implementation, but the actual implementation chose a different pattern (finer-grained per-field constants like `PERMALINK_SELECTOR`, `USER_NAME_SELECTOR`, plus a shared regex pattern).
+
+**Why drift happened:** When drafting specs, it's natural to anticipate patterns based on similar features. During implementation, the actual DOM structure and selector stability led to a different (better) choice. The spec wasn't updated when the feature landed.
+
+**How to reconcile:** Update the spec scenario to enumerate the actual constants and patterns in the code. Add a clarifying note about why the implementation differs (e.g., "metrics use aria-label substring matching rather than a dedicated selector constant").
+
+**Root cause:** Specs are written before implementation and contain educated guesses about the solution. Implementation discovers the actual best approach. **Specs must be updated to match what was actually built, not left as a historical record of what was anticipated.**
+
+**Learning:** When drift-checking, look for hypothetical names in specs (especially in "constants at the top of the file" scenarios). If the spec lists specific identifiers, verify they actually exist in the code. Update the spec to match reality rather than expecting implementation to match hypothetical names.
+
+**When to apply:** Any spec scenario that enumerates specific identifiers (constant names, function names, type names) should be verified against actual code during drift-check and updated if they differ.

@@ -307,3 +307,48 @@ Frustrations addressed:
 ## Learnings
 
 <!-- Updated via /compound after implementation -->
+
+### TypeScript Discriminated Unions Across page.evaluate Boundaries
+
+**Problem:** When a discriminated union is returned from `page.evaluate()`, TypeScript's control flow analysis doesn't narrow the type after checking the discriminant property. The function boundary breaks the narrowing.
+
+**Solution:** After runtime check of the discriminant, use explicit type assertion with destructuring:
+
+```typescript
+const quotedData = await page.evaluate(({ article, ... }) => {
+  if (nestedArticles.length < 1) {
+    return { hasQuoted: false };
+  }
+  // ... extract fields
+  return {
+    hasQuoted: true,
+    permalink: permalinkHref,
+    author: { handle, displayName, verified },
+    text,
+    postedAt,
+  };
+}, { article, ... });
+
+if (!quotedData.hasQuoted) {
+  return null;
+}
+
+// Type assertion after discriminant check
+const { permalink, author, text, postedAt } = quotedData as {
+  hasQuoted: true;
+  permalink: string;
+  author: Author;
+  text: string;
+  postedAt: string | null;
+};
+```
+
+**Why:** TypeScript can't track control flow across `page.evaluate()` boundaries. Explicit type assertions after runtime checks are cleaner than complex type guards for cross-boundary discriminated unions.
+
+### Metric Extraction Pattern: Aria-Label Substring Matching
+
+**Implementation choice:** Metrics (replies, reposts, likes, views) are identified by matching aria-label substrings (`"repl"`, `"repost"`, `"like"`, `"view"`) on `button`/`a` descendants, then parsing the leading numeric portion with a shared `METRIC_VALUE_PATTERN` regex.
+
+**Why not dedicated selector constants:** X's metric buttons don't have stable test-ids. Aria-labels are more stable (accessibility requirement) and the substring matching is resilient to text changes ("123 Replies" vs "Reply count: 123").
+
+**Tradeoff:** The spec initially anticipated `METRIC_SELECTORS` constants, but the implementation found that per-field selector constants (`POST_SELECTOR`, `PERMALINK_SELECTOR`, etc.) plus a shared regex pattern was cleaner and more maintainable than selector arrays.
