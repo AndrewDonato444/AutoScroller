@@ -21,8 +21,8 @@
 
 | Status | Count |
 |--------|-------|
-| ✅ Completed | 8 |
-| 🔄 In Progress | 1 |
+| ✅ Completed | 9 |
+| 🔄 In Progress | 0 |
 | ⬜ Pending | 7 |
 | ⏸️ Blocked | 0 |
 
@@ -55,7 +55,7 @@
 | # | Feature | Source | Jira | Complexity | Deps | Status |
 |---|---------|--------|------|------------|------|--------|
 | 10 | State module (dedup cache — last 10k post hashes) | vision | - | M | 7 | ✅ |
-| 11 | Rolling themes store (last 10 runs) | vision | - | S | 10 | 🔄 |
+| 11 | Rolling themes store (last 10 runs) | vision | - | S | 10 | ✅ |
 | 12 | Claude summarizer (themes, worth-clicking, voices, noise) | vision | - | L | 10, 11 | ⬜ |
 | 13 | Markdown writer (human summary + links to raw JSON) | vision | - | M | 12 | ⬜ |
 | 14 | `--replay <run-id>` flag (re-summarize saved raw JSON) | vision | - | S | 12, 13 | ⬜ |

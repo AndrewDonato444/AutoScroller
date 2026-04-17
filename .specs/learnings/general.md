@@ -798,3 +798,70 @@ And unlike feature 7's raw.json, state files do NOT append '\n'
 **Learning:** When drift-checking, look for implementation details in specs (especially in "how it works" scenarios). If the spec describes a technique that wasn't actually used, verify the actual approach still meets the requirement, then update the spec to document what was built.
 
 **When to apply:** Any spec scenario that describes implementation techniques (fsync, transactions, locks, caching strategies) rather than behavioral outcomes. Verify the code uses those techniques or update the spec to describe the actual approach.
+
+---
+
+## JavaScript Gotchas
+
+### slice(-0) Returns Full Array, Not Empty Array
+
+**Gotcha:** JavaScript's `slice(-0)` doesn't behave like other negative indices — it returns the full array instead of an empty array.
+
+```typescript
+// Expected behavior with limit=0
+const items = [1, 2, 3, 4, 5];
+const result = items.slice(-0);  // ❌ Returns [1, 2, 3, 4, 5], not []
+
+// Solution: explicit check
+if (limit === 0) {
+  return [];
+}
+const result = items.slice(-limit);  // Now safe for all positive limits
+```
+
+**Why:** JavaScript treats `-0` as `0` when slicing, and `slice(0)` returns the entire array from index 0. Other negative indices work as expected (`slice(-1)` gets last item, `slice(-2)` gets last two), but `-0` is a special case.
+
+**When it surfaces:** Functions that take a `limit` parameter and use `slice(-limit)` to get the last N items. The `limit=0` edge case requires explicit handling.
+
+**Real-world impact:** Test failure on `recentThemes(store, 0)` expected `[]` but got all themes. The `Math.min(limit, store.runs.length)` approach alone was insufficient — the explicit zero-check is mandatory.
+
+### Timestamp Mismatch Between Caller and Function
+
+**Problem:** When both a function and its caller calculate timestamps independently, the logged filename doesn't match the actual filename.
+
+```typescript
+// BAD: Function calculates its own timestamp
+async function quarantineCorruptFile(themesPath: string, resolvedStateDir: string): Promise<void> {
+  const epochMs = Date.now();  // Calculated here
+  const corruptPath = join(resolvedStateDir, `rolling-themes.json.corrupt-${epochMs}`);
+  await rename(themesPath, corruptPath);
+}
+
+// Caller also calculates timestamp for logging
+catch (error) {
+  const epochMs = Date.now();  // Calculated here (different timestamp!)
+  await quarantineCorruptFile(themesPath, resolvedStateDir);
+  console.log(`quarantined to rolling-themes.json.corrupt-${epochMs}`);  // Wrong!
+}
+
+// GOOD: Function returns the timestamp it uses
+async function quarantineCorruptFile(
+  themesPath: string, 
+  resolvedStateDir: string
+): Promise<number> {  // Returns timestamp
+  const epochMs = Date.now();
+  const corruptPath = join(resolvedStateDir, `rolling-themes.json.corrupt-${epochMs}`);
+  await rename(themesPath, corruptPath);
+  return epochMs;  // Caller uses this for logging
+}
+
+// Caller uses returned timestamp
+const epochMs = await quarantineCorruptFile(themesPath, resolvedStateDir);
+console.log(`quarantined to rolling-themes.json.corrupt-${epochMs}`);  // Correct!
+```
+
+**Why:** The two `Date.now()` calls happen milliseconds apart. The function's call determines the actual filename, but the caller's call determines the logged filename. They can differ, making the log message misleading.
+
+**Root cause:** Functions that perform file operations with timestamps should return the timestamp they used, not expect callers to calculate it independently.
+
+**When to apply:** Any function that generates timestamped filenames, temporary files, or backup files. Return the timestamp so callers can log accurately or use it in other operations.

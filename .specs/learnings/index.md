@@ -19,6 +19,25 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: State Module (Rolling Themes Store)
+
+**JavaScript Gotchas:**
+- `slice(-0)` returns full array, not empty — requires explicit `if (limit === 0) return []` check
+- Timestamp mismatch bug: function calculating its own timestamp vs caller calculating a different one → log filename doesn't match actual filename. Fix: return timestamp from function.
+
+**Architectural Consistency:**
+- Followed dedup-cache patterns (quarantine, atomic write, FIFO eviction, pure functions) for operator mental model consistency
+- Duplicate runId replacement critical for --replay scenario (prevents shrinking window on re-summarize)
+
+**Design Patterns:**
+- FIFO eviction from end (`slice(length - MAX_RUNS)`) keeps newest, not oldest
+- Fixed key order in JSON for grep-friendly output
+- Return meaningful values from helpers (timestamp) instead of void
+
+**Testing:**
+- No mocks, real filesystem in isolated temp directories
+- Edge case coverage: limit=0, empty arrays, boundary conditions
+
 ### 2026-04-17: State Module (Dedup Cache)
 
 **Helper Extraction:**

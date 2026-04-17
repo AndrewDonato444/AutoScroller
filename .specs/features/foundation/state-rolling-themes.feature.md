@@ -311,4 +311,91 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound -->
+### Architectural Consistency
+
+Followed the same patterns established in the dedup-cache (feature 10) for consistency:
+- **Quarantine corrupt files** — Rename to `.corrupt-<epochMs>` instead of deleting or throwing
+- **Atomic write** — tmpfile + rename ensures store is never partially written
+- **FIFO eviction** — Bounded history with oldest entries falling off the front
+- **Pure functions** — No mutation, use spread operators to return new objects
+
+This architectural alignment means the operator has one mental model for both state files (dedup cache and rolling themes).
+
+### Duplicate RunId Replacement
+
+Critical design decision for the `--replay` scenario: when `appendRun` receives a duplicate `runId`, it replaces the entry in place rather than appending a second entry.
+
+**Why this matters:** Feature 14's `--replay <runId>` will re-run the summarizer against a saved `raw.json`. If re-summarizing wrote a second entry with the same runId, the rolling window would be silently shortened by one real run every time a replay happens. In-place replacement keeps the window honest — 10 runs is always 10 real runs, regardless of how many replays occurred.
+
+### FIFO Eviction from End
+
+The eviction logic uses `slice(length - MAX_RUNS)` to keep the **newest** entries, not `slice(0, MAX_RUNS)` which would keep the oldest.
+
+```typescript
+// FIFO: keep newest MAX_RUNS entries
+if (newRuns.length > MAX_RUNS) {
+  newRuns = newRuns.slice(newRuns.length - MAX_RUNS);
+}
+```
+
+This matches the rolling window's purpose: the summarizer cares about "what were the themes **last week**" (recent history), not "what were the themes when I first started using this tool" (ancient history).
+
+### Fixed Key Order for Grep-Friendly JSON
+
+The store serialization uses explicit key ordering for both top-level and nested objects:
+
+```typescript
+const payload = {
+  schemaVersion: store.schemaVersion,  // First
+  runs: store.runs.map(run => ({
+    runId: run.runId,      // First in RunThemes
+    endedAt: run.endedAt,  // Second
+    themes: run.themes,    // Third
+  })),
+};
+```
+
+**Why:** Consistent key order makes the file grep-friendly. The operator can `jq '.runs[].themes'` or visually scan the file and find themes in the same position every time. Random key order (from default object serialization) would make the file harder to inspect.
+
+### Edge Case: slice(-0) Gotcha
+
+Initial test failure on `UT-SRT-019` (limit of 0 returns empty array). Root cause: `slice(-0)` returns all elements instead of empty array.
+
+**Solution:** Explicit check before slicing:
+```typescript
+if (limit === 0) {
+  return [];
+}
+const effectiveLimit = limit === undefined ? store.runs.length : Math.min(limit, store.runs.length);
+const recentRuns = store.runs.slice(-effectiveLimit);
+```
+
+The `Math.min(limit, store.runs.length)` approach alone was insufficient for the limit=0 edge case — the explicit zero-check is mandatory.
+
+### Timestamp Consistency Bug
+
+During refactoring, discovered the quarantine function was calculating its own timestamp (line 43) while the caller was calculating a different one for the log message (line 90). This meant the logged filename didn't match the actual filename.
+
+**Fix:** Changed the function to return the timestamp it uses:
+
+```typescript
+async function quarantineCorruptFile(
+  themesPath: string,
+  resolvedStateDir: string
+): Promise<number> {  // Now returns timestamp
+  const epochMs = Date.now();
+  const corruptPath = join(resolvedStateDir, `rolling-themes.json.corrupt-${epochMs}`);
+  await rename(themesPath, corruptPath);
+  return epochMs;  // Caller uses this for logging
+}
+```
+
+This ensures the log message and actual filename always agree.
+
+### Testing Pattern: No Mocks, Real Filesystem
+
+All 30 tests use real filesystem operations in isolated temp directories (`tmpdir() + Date.now()` for uniqueness). No mocks for `fs.readFile`, `fs.writeFile`, or `fs.rename`.
+
+**Why:** These operations are cheap, deterministic, and don't require network or external processes. Mocking would add complexity without benefits. The real filesystem verifies the actual atomic write behavior (tmpfile cleanup, corrupt file quarantine paths).
+
+**Coverage:** Tests include edge cases often missed: `limit=0`, empty `themes` arrays, duplicate `runId` replacement, FIFO eviction at boundary, schema mismatch quarantine, corrupt JSON recovery.
