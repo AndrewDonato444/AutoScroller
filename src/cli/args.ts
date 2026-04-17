@@ -5,6 +5,9 @@
  * Parses flags and positionals for verb-based commands.
  */
 
+const MIN_SCROLL_MINUTES = 1;
+const MAX_SCROLL_MINUTES = 120;
+
 export interface ParsedArgs {
   verb: string;
   flags: Record<string, string | boolean>;
@@ -87,20 +90,11 @@ export function parseMinutesFlag(value: string | boolean | undefined): number | 
   }
 
   const num = parseInt(value, 10);
-  if (isNaN(num) || num < 1 || num > 120) {
-    throw new Error('--minutes must be an integer between 1 and 120');
+  if (isNaN(num) || num < MIN_SCROLL_MINUTES || num > MAX_SCROLL_MINUTES) {
+    throw new Error(`--minutes must be an integer between ${MIN_SCROLL_MINUTES} and ${MAX_SCROLL_MINUTES}`);
   }
 
   return num;
-}
-
-/**
- * Get version string from package.json.
- */
-export function getVersion(): string {
-  // This will be imported by index.ts which reads package.json
-  // For now, we'll read it in the CLI entry point
-  return '0.0.1'; // Placeholder - will be overridden by actual package.json read
 }
 
 /**

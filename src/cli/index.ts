@@ -12,6 +12,10 @@ import { handleReplay } from './replay.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const EXIT_SUCCESS = 0;
+const EXIT_ERROR = 1;
+const EXIT_USAGE_ERROR = 2;
+
 interface PackageJson {
   name: string;
   version: string;
@@ -35,7 +39,7 @@ async function main() {
       parsed = parseArgs(args);
     } catch (error: any) {
       console.error(error.message);
-      process.exit(2);
+      process.exit(EXIT_USAGE_ERROR);
     }
 
     const { verb, flags, positionals } = parsed;
@@ -43,12 +47,12 @@ async function main() {
     // Handle global flags first
     if (flags.help || flags.h) {
       printHelp(version);
-      process.exit(0);
+      process.exit(EXIT_SUCCESS);
     }
 
     if (flags.version || flags.v) {
       printVersion(version);
-      process.exit(0);
+      process.exit(EXIT_SUCCESS);
     }
 
     // Route by verb
@@ -67,36 +71,50 @@ async function main() {
 
       default:
         console.error(`unknown command: ${verb} (expected one of: scroll, login, replay)`);
-        process.exit(2);
+        process.exit(EXIT_USAGE_ERROR);
     }
 
   } catch (error: any) {
     // Config loader errors and other errors surface unchanged
     if (error.message && error.message.startsWith('config error:')) {
       // Config loader already printed the error
-      process.exit(1);
+      process.exit(EXIT_ERROR);
     } else if (error.message) {
       console.error(error.message);
-      process.exit(1);
+      process.exit(EXIT_ERROR);
     } else {
       console.error(error);
-      process.exit(1);
+      process.exit(EXIT_ERROR);
     }
   }
+}
+
+/**
+ * Validate flags against allowed list, exit on error.
+ */
+function validateFlagsOrExit(flags: Record<string, string | boolean>, allowed: string[]): void {
+  try {
+    validateFlags(flags, allowed);
+  } catch (error: any) {
+    console.error(error.message);
+    process.exit(EXIT_USAGE_ERROR);
+  }
+}
+
+/**
+ * Load config from --config flag if present.
+ */
+async function loadConfigFromFlags(flags: Record<string, string | boolean>) {
+  const configPath = typeof flags.config === 'string' ? flags.config : undefined;
+  return await loadConfig({ path: configPath });
 }
 
 /**
  * Handle the scroll command.
  */
 async function handleScrollCommand(flags: Record<string, string | boolean>) {
-  // Validate flags
   const allowedFlags = ['help', 'h', 'version', 'v', 'minutes', 'dry-run', 'config'];
-  try {
-    validateFlags(flags, allowedFlags);
-  } catch (error: any) {
-    console.error(error.message);
-    process.exit(2);
-  }
+  validateFlagsOrExit(flags, allowedFlags);
 
   // Parse --minutes flag
   let minutes: number | undefined;
@@ -104,14 +122,10 @@ async function handleScrollCommand(flags: Record<string, string | boolean>) {
     minutes = parseMinutesFlag(flags.minutes);
   } catch (error: any) {
     console.error(error.message);
-    process.exit(2);
+    process.exit(EXIT_USAGE_ERROR);
   }
 
-  // Load config
-  const configPath = typeof flags.config === 'string' ? flags.config : undefined;
-  const config = await loadConfig({ path: configPath });
-
-  // Invoke handler
+  const config = await loadConfigFromFlags(flags);
   const dryRun = flags['dry-run'] === true;
   await handleScroll(config, { minutes, dryRun });
 }
@@ -120,20 +134,10 @@ async function handleScrollCommand(flags: Record<string, string | boolean>) {
  * Handle the login command.
  */
 async function handleLoginCommand(flags: Record<string, string | boolean>) {
-  // Validate flags
   const allowedFlags = ['help', 'h', 'version', 'v', 'config'];
-  try {
-    validateFlags(flags, allowedFlags);
-  } catch (error: any) {
-    console.error(error.message);
-    process.exit(2);
-  }
+  validateFlagsOrExit(flags, allowedFlags);
 
-  // Load config
-  const configPath = typeof flags.config === 'string' ? flags.config : undefined;
-  const config = await loadConfig({ path: configPath });
-
-  // Invoke handler
+  const config = await loadConfigFromFlags(flags);
   await handleLogin(config);
 }
 
@@ -141,33 +145,22 @@ async function handleLoginCommand(flags: Record<string, string | boolean>) {
  * Handle the replay command.
  */
 async function handleReplayCommand(flags: Record<string, string | boolean>, positionals: string[]) {
-  // Validate flags
   const allowedFlags = ['help', 'h', 'version', 'v', 'config'];
-  try {
-    validateFlags(flags, allowedFlags);
-  } catch (error: any) {
-    console.error(error.message);
-    process.exit(2);
-  }
+  validateFlagsOrExit(flags, allowedFlags);
 
   // Check for required run-id positional
   if (positionals.length === 0) {
     console.error('replay requires a run-id: pnpm replay <run-id>');
-    process.exit(2);
+    process.exit(EXIT_USAGE_ERROR);
   }
 
   const runId = positionals[0];
-
-  // Load config
-  const configPath = typeof flags.config === 'string' ? flags.config : undefined;
-  const config = await loadConfig({ path: configPath });
-
-  // Invoke handler
+  const config = await loadConfigFromFlags(flags);
   await handleReplay(config, runId);
 }
 
 // Run main
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exit(EXIT_ERROR);
 });
