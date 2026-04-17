@@ -523,6 +523,39 @@ export async function handleLogin(config: Config): Promise<void> {
 
 **Why:** Named constants make Unix exit code conventions explicit and enable potential reuse across CLI commands. If multiple commands need consistent exit codes, they're defined once at the top.
 
+**Impact:** The Dry-Run Flag feature replaced 15+ magic number exit codes with three named constants across all CLI handlers, proving the pattern scales well for consistency.
+
+### Verb-Specific Parameters in Shared Helpers
+
+**Pattern:** When a shared helper function can be called from multiple CLI commands, add an optional parameter to make error messages context-specific:
+
+```typescript
+// Shared validation helper
+export function validateFlags(
+  flags: Record<string, string | boolean>,
+  allowed: string[],
+  verb?: string  // Optional verb for context-specific help messages
+): void {
+  const allowedSet = new Set(allowed);
+  
+  for (const flag of Object.keys(flags)) {
+    if (!allowedSet.has(flag)) {
+      const helpHint = verb ? `\`pnpm ${verb} --help\`` : '`--help`';
+      throw new Error(`unknown flag: --${flag} (run ${helpHint} for usage)`);
+    }
+  }
+}
+
+// Usage from different commands
+validateFlags(flags, ['config'], 'login');    // "run `pnpm login --help`"
+validateFlags(flags, ['config'], 'replay');   // "run `pnpm replay --help`"
+validateFlags(flags, ['dry-run', 'minutes'], 'scroll');  // "run `pnpm scroll --help`"
+```
+
+**Why:** Hardcoding a specific command name (`"pnpm scroll --help"`) in a shared helper produces misleading errors when called from other commands. The optional parameter keeps the helper DRY while making error messages accurate.
+
+**When to apply:** Shared validation, formatting, or error-handling functions that can be invoked from multiple CLI commands. The parameter cost is low (one optional arg) and the UX benefit is high (operator sees the right command in error messages).
+
 ### Extract Helper Functions for Path Operations
 
 For path operations that need to happen in multiple phases (validation, creation, display), extract to helpers:

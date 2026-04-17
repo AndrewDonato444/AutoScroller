@@ -19,6 +19,25 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-17: Dry-Run Flag
+
+**CLI Helper Design:**
+- Verb-specific error messages via optional parameter in shared helpers (e.g., `validateFlags(flags, allowed, verb?)`)
+- Prevents misleading errors when shared validation is called from multiple commands (login, replay, scroll)
+
+**Validation Ordering:**
+- Place validation checks (session_expired, errors) BEFORE dry-run gates, not after
+- Operator wants failures to surface even in dry-run mode — only side effects are suppressed
+- Early exit pattern: `session_expired → error → browser_closed → dry-run check → success`
+
+**Test Strategy:**
+- Browser-dependent integration tests documented with `.skip()` and clear in-file comments
+- Integration tests as living documentation — 7 scroll scenarios skipped but fully implemented
+- Non-browser tests (replay dry-run, login rejection) provide merge coverage
+
+**Code Quality:**
+- Exit code constants replaced 15+ magic numbers for consistency across all CLI commands
+
 ### 2026-04-17: Replay Flag
 
 **CLI Test Patterns:**
