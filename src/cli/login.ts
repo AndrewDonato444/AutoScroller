@@ -5,6 +5,44 @@ import { chromium } from 'playwright';
 import type { BrowserContext } from 'playwright';
 import type { Config } from '../config/schema.js';
 
+// Exit codes
+const EXIT_SUCCESS = 0;
+const EXIT_ERROR = 1;
+const EXIT_USAGE_ERROR = 2;
+
+// Constants
+const X_LOGIN_URL = 'https://x.com/login';
+
+/**
+ * Expand ~ in a path to the user's home directory.
+ */
+function expandHomeDir(path: string): string {
+  if (path.startsWith('~/')) {
+    return join(homedir(), path.slice(2));
+  }
+  if (path === '~') {
+    return homedir();
+  }
+  return path;
+}
+
+/**
+ * Validate and prepare user data directory.
+ * Creates the directory if it doesn't exist.
+ * Exits with error if path exists but is not a directory.
+ */
+function ensureUserDataDir(userDataDir: string): void {
+  if (existsSync(userDataDir)) {
+    const stats = statSync(userDataDir);
+    if (!stats.isDirectory()) {
+      console.error(`browser.userDataDir must be a directory: ${userDataDir}`);
+      process.exit(EXIT_USAGE_ERROR);
+    }
+  } else {
+    mkdirSync(userDataDir, { recursive: true });
+  }
+}
+
 /**
  * Handle the login command.
  *
@@ -13,10 +51,6 @@ import type { Config } from '../config/schema.js';
  * Detects success based on final URL.
  */
 export async function handleLogin(config: Config): Promise<void> {
-  // Exit codes
-  const EXIT_SUCCESS = 0;
-  const EXIT_ERROR = 1;
-  const EXIT_USAGE_ERROR = 2;
 
   // Refuse to run headless
   if (config.browser.headless) {
@@ -26,24 +60,10 @@ export async function handleLogin(config: Config): Promise<void> {
   }
 
   // Expand ~ in userDataDir
-  let userDataDir = config.browser.userDataDir;
-  if (userDataDir.startsWith('~/')) {
-    userDataDir = join(homedir(), userDataDir.slice(2));
-  } else if (userDataDir === '~') {
-    userDataDir = homedir();
-  }
+  const userDataDir = expandHomeDir(config.browser.userDataDir);
 
-  // Check if userDataDir exists and is a file (not a directory)
-  if (existsSync(userDataDir)) {
-    const stats = statSync(userDataDir);
-    if (!stats.isDirectory()) {
-      console.error(`browser.userDataDir must be a directory: ${userDataDir}`);
-      process.exit(EXIT_USAGE_ERROR);
-    }
-  } else {
-    // Create userDataDir if it doesn't exist
-    mkdirSync(userDataDir, { recursive: true });
-  }
+  // Validate and create userDataDir if needed
+  ensureUserDataDir(userDataDir);
 
   // Print instruction
   console.log('log in to X in the open window, then close the window when done');
@@ -62,7 +82,7 @@ export async function handleLogin(config: Config): Promise<void> {
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
     // Navigate to X login page
-    await page.goto('https://x.com/login');
+    await page.goto(X_LOGIN_URL);
 
     // Wait for context to close (operator closes the window)
     await new Promise<void>((resolve) => {
