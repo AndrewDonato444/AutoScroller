@@ -244,7 +244,7 @@ export async function handleReplay(config: Config, runId: string, dryRun: boolea
         displaySummaryJsonPath: formatDisplayPath(summaryJsonPath),
       };
 
-      const { receipts, markdownSucceeded, anySucceeded } = await runWriters({
+      const { receipts, markdownSucceeded } = await runWriters({
         writers,
         summary: summarizerResult.summary,
         context,
