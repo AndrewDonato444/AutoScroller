@@ -82,6 +82,10 @@ export function parseMinutesFlag(value: string | boolean | undefined): number | 
     return undefined;
   }
 
+  if (typeof value !== 'string') {
+    throw new Error('--minutes must be an integer between 1 and 120');
+  }
+
   const num = parseInt(value, 10);
   if (isNaN(num) || num < 1 || num > 120) {
     throw new Error('--minutes must be an integer between 1 and 120');

@@ -15,9 +15,9 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   const effectiveMinutes = flags.minutes ?? config.scroll.minutes;
 
   if (flags.dryRun) {
-    console.log(`scrollproxy v0.0.1 — dry-run: scroll + extract only, summarizer and writer skipped — not yet wired`);
+    console.log(`scrollproxy v0.0.1 — dry-run: scroll + extract only, summarizer and writer skipped — feed not yet wired`);
   } else {
     // Show effective minutes to help verify config loading
-    console.log(`scrollproxy v0.0.1 — scroll handler not yet wired (effective minutes: ${effectiveMinutes})`);
+    console.log(`scrollproxy v0.0.1 — feed not yet wired (effective minutes: ${effectiveMinutes})`);
   }
 }
