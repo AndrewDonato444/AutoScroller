@@ -20,12 +20,13 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 |--------|---------|--------|-------|------------|--------|
 | foundation | [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md) | `src/cli/index.ts` | tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Config Loader](.specs/features/foundation/config-loader.feature.md) | `src/config/load.ts` | tests/foundation/config-loader.test.ts | - | implemented |
+| foundation | [Dry-Run Flag](.specs/features/foundation/dry-run-flag.feature.md) | `src/cli/scroll.ts` | tests/foundation/scroll-handler.test.ts, tests/foundation/cli-entry.test.ts, tests/foundation/replay.test.ts | - | implemented |
 | foundation | [Extractor](.specs/features/foundation/extractor.feature.md) | `src/extract/extractor.ts` | tests/foundation/extractor.test.ts | - | implemented |
 | foundation | [Login Command](.specs/features/foundation/login.feature.md) | `src/cli/login.ts` | tests/foundation/login.test.ts, tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Markdown Writer](.specs/features/foundation/markdown-writer.feature.md) | `src/writer/markdown.ts` | tests/foundation/markdown-writer.test.ts | - | implemented |
 | foundation | [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md) | `package.json` | tests/foundation/project-scaffold.test.ts | - | implemented |
 | foundation | [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md) | `src/writer/raw-json.ts` | tests/foundation/raw-json-writer.test.ts | - | implemented |
-| foundation | [Replay Flag](.specs/features/foundation/replay-flag.feature.md) | `src/cli/replay.ts` | tests/foundation/replay.test.ts | - | implemented |
+| foundation | [Replay Flag](.specs/features/foundation/replay-flag.feature.md) | `src/cli/replay.ts` | tests/foundation/replay.test.ts, tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Scroller](.specs/features/foundation/scroller.feature.md) | `src/scroll/scroller.ts` | tests/foundation/scroller.test.ts | - | implemented |
 | foundation | [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md) | `src/state/dedup-cache.ts` | tests/foundation/state-dedup-cache.test.ts | - | implemented |
 | foundation | [State Module (Rolling Themes Store)](.specs/features/foundation/state-rolling-themes.feature.md) | `src/state/rolling-themes.ts` | tests/foundation/state-rolling-themes.test.ts | - | implemented |
@@ -40,8 +41,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | stub | 0 |
 | specced | 0 |
 | tested | 0 |
-| implemented | 12 |
-| **Total** | **12** |
+| implemented | 13 |
+| **Total** | **13** |
 
 ---
 
@@ -63,6 +64,7 @@ _None_
 
 - [CLI Entry + Arg Parsing](.specs/features/foundation/cli-entry.feature.md)
 - [Config Loader](.specs/features/foundation/config-loader.feature.md)
+- [Dry-Run Flag](.specs/features/foundation/dry-run-flag.feature.md)
 - [Extractor](.specs/features/foundation/extractor.feature.md)
 - [Login Command](.specs/features/foundation/login.feature.md)
 - [Markdown Writer](.specs/features/foundation/markdown-writer.feature.md)

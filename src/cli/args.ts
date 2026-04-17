@@ -66,13 +66,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
  */
 export function validateFlags(
   flags: Record<string, string | boolean>,
-  allowed: string[]
+  allowed: string[],
+  verb?: string
 ): void {
   const allowedSet = new Set(allowed);
 
   for (const flag of Object.keys(flags)) {
     if (!allowedSet.has(flag)) {
-      throw new Error(`unknown flag: --${flag} (run \`pnpm scroll --help\` for usage)`);
+      const helpHint = verb ? `\`pnpm ${verb} --help\`` : '`--help`';
+      throw new Error(`unknown flag: --${flag} (run ${helpHint} for usage)`);
     }
   }
 }

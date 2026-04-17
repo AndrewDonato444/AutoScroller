@@ -92,9 +92,9 @@ async function main() {
 /**
  * Validate flags against allowed list, exit on error.
  */
-function validateFlagsOrExit(flags: Record<string, string | boolean>, allowed: string[]): void {
+function validateFlagsOrExit(flags: Record<string, string | boolean>, allowed: string[], verb?: string): void {
   try {
-    validateFlags(flags, allowed);
+    validateFlags(flags, allowed, verb);
   } catch (error: any) {
     console.error(error.message);
     process.exit(EXIT_USAGE_ERROR);
@@ -114,7 +114,7 @@ async function loadConfigFromFlags(flags: Record<string, string | boolean>) {
  */
 async function handleScrollCommand(flags: Record<string, string | boolean>) {
   const allowedFlags = ['help', 'h', 'version', 'v', 'minutes', 'dry-run', 'config'];
-  validateFlagsOrExit(flags, allowedFlags);
+  validateFlagsOrExit(flags, allowedFlags, 'scroll');
 
   // Parse --minutes flag
   let minutes: number | undefined;
@@ -135,7 +135,7 @@ async function handleScrollCommand(flags: Record<string, string | boolean>) {
  */
 async function handleLoginCommand(flags: Record<string, string | boolean>) {
   const allowedFlags = ['help', 'h', 'version', 'v', 'config'];
-  validateFlagsOrExit(flags, allowedFlags);
+  validateFlagsOrExit(flags, allowedFlags, 'login');
 
   const config = await loadConfigFromFlags(flags);
   await handleLogin(config);
@@ -146,7 +146,7 @@ async function handleLoginCommand(flags: Record<string, string | boolean>) {
  */
 async function handleReplayCommand(flags: Record<string, string | boolean>, positionals: string[]) {
   const allowedFlags = ['help', 'h', 'version', 'v', 'config', 'dry-run'];
-  validateFlagsOrExit(flags, allowedFlags);
+  validateFlagsOrExit(flags, allowedFlags, 'replay');
 
   // Check for required run-id positional
   if (positionals.length === 0) {
