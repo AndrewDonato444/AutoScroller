@@ -1,6 +1,6 @@
 import type { Config } from '../config/schema.js';
 import { runScroll, expandHomeDir, type ScrollResult } from '../scroll/scroller.js';
-import { createExtractor } from '../extract/extractor.js';
+import { createExtractor, type ExtractedPost } from '../extract/extractor.js';
 import { writeRawJson, generateRunId } from '../writer/raw-json.js';
 import { loadDedupCache, saveDedupCache, partitionPosts, appendHashes } from '../state/dedup-cache.js';
 
@@ -12,6 +12,32 @@ export interface ScrollFlags {
 // Exit codes
 const EXIT_SUCCESS = 0;
 const EXIT_ERROR = 1;
+
+/**
+ * Format a path for display by converting home directory to tilde notation.
+ */
+function formatDisplayPath(path: string): string {
+  return path.replace(expandHomeDir('~'), '~');
+}
+
+/**
+ * Update the dedup cache with new posts.
+ * Returns a summary fragment with the new/seen counts and display path.
+ * Throws if cache update fails.
+ */
+async function updateDedupCacheAndGetSummary(
+  posts: ExtractedPost[],
+  stateDir: string,
+  rawJsonPath: string
+): Promise<string> {
+  const cache = await loadDedupCache(stateDir);
+  const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
+  const updatedCache = appendHashes(cache, newHashes);
+  await saveDedupCache(updatedCache, stateDir);
+
+  const displayPath = formatDisplayPath(rawJsonPath);
+  return ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+}
 
 /**
  * Handle the scroll command.
@@ -89,17 +115,10 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
         // Update dedup cache (browser closed with recovered posts)
         try {
-          const cache = await loadDedupCache(config.output.state);
-          const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
-          const updatedCache = appendHashes(cache, newHashes);
-          await saveDedupCache(updatedCache, config.output.state);
-
-          // Use tilde notation for display
-          const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
-          summaryLine += ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+          summaryLine += await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
         } catch (cacheError: any) {
           // Dedup cache failure is non-fatal
-          const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+          const displayPath = formatDisplayPath(writeResult.rawJsonPath);
           summaryLine += ` — saved to ${displayPath}`;
           console.log(summaryLine);
           console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);
@@ -142,17 +161,10 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
       // Update dedup cache after successful raw.json write
       try {
-        const cache = await loadDedupCache(config.output.state);
-        const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
-        const updatedCache = appendHashes(cache, newHashes);
-        await saveDedupCache(updatedCache, config.output.state);
-
-        // Use tilde notation for display
-        const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
-        summaryLine += ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+        summaryLine += await updateDedupCacheAndGetSummary(posts, config.output.state, writeResult.rawJsonPath);
       } catch (cacheError: any) {
         // Dedup cache failure is non-fatal - the raw.json is safe
-        const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+        const displayPath = formatDisplayPath(writeResult.rawJsonPath);
         summaryLine += ` — saved to ${displayPath}`;
         console.log(summaryLine);
         console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);

@@ -38,6 +38,21 @@ export function hashPost(post: ExtractedPost): string {
 }
 
 /**
+ * Quarantine a corrupt cache file and log the action.
+ * Returns the path to the quarantined file.
+ */
+async function quarantineCorruptCache(
+  cachePath: string,
+  resolvedStateDir: string,
+  logMessage: string
+): Promise<void> {
+  const epochMs = Date.now();
+  const corruptPath = join(resolvedStateDir, `seen-posts.json.corrupt-${epochMs}`);
+  await rename(cachePath, corruptPath);
+  console.log(logMessage);
+}
+
+/**
  * Load the dedup cache from <stateDir>/seen-posts.json.
  *
  * Returns an empty cache if:
@@ -56,10 +71,9 @@ export async function loadDedupCache(stateDir: string): Promise<DedupCache> {
 
     // Validate schema version
     if (parsed.schemaVersion !== CACHE_SCHEMA_VERSION) {
-      const epochMs = Date.now();
-      const corruptPath = join(resolvedStateDir, `seen-posts.json.corrupt-${epochMs}`);
-      await rename(cachePath, corruptPath);
-      console.log(
+      await quarantineCorruptCache(
+        cachePath,
+        resolvedStateDir,
         `dedup cache schema ${parsed.schemaVersion} not supported by this build; quarantined and started fresh`
       );
       return { schemaVersion: CACHE_SCHEMA_VERSION, hashes: [] };
@@ -80,9 +94,9 @@ export async function loadDedupCache(stateDir: string): Promise<DedupCache> {
     // Corrupt file - quarantine and start fresh
     try {
       const epochMs = Date.now();
-      const corruptPath = join(resolvedStateDir, `seen-posts.json.corrupt-${epochMs}`);
-      await rename(cachePath, corruptPath);
-      console.log(
+      await quarantineCorruptCache(
+        cachePath,
+        resolvedStateDir,
         `dedup cache corrupt; quarantined to seen-posts.json.corrupt-${epochMs}, starting fresh`
       );
     } catch {
