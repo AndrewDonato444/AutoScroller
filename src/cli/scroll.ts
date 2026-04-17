@@ -1,6 +1,7 @@
 import type { Config } from '../config/schema.js';
 import { runScroll, expandHomeDir, type ScrollResult } from '../scroll/scroller.js';
 import { createExtractor } from '../extract/extractor.js';
+import { writeRawJson, generateRunId } from '../writer/raw-json.js';
 
 export interface ScrollFlags {
   minutes?: number;
@@ -20,6 +21,11 @@ const EXIT_ERROR = 1;
 export async function handleScroll(config: Config, flags: ScrollFlags): Promise<void> {
   const effectiveMinutes = flags.minutes ?? config.scroll.minutes;
   const resolvedUserDataDir = expandHomeDir(config.browser.userDataDir);
+  const isDryRun = flags.dryRun ?? false;
+
+  // Generate run ID at the start (so startedAt and directory name agree)
+  const startedAt = new Date();
+  const runId = generateRunId(startedAt);
 
   // Print startup line
   console.log(`scrolling x.com for ${effectiveMinutes}m (persistent context: ${resolvedUserDataDir})`);
@@ -36,7 +42,7 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     jitterMs: config.scroll.jitterMs,
     longPauseEvery: config.scroll.longPauseEvery,
     longPauseMs: config.scroll.longPauseMs,
-    dryRun: flags.dryRun ?? false,
+    dryRun: isDryRun,
     onTick: extractor.onTick,
   });
 
@@ -51,25 +57,82 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     process.exit(EXIT_ERROR);
   }
 
-  if (result.status === 'browser_closed') {
-    console.log(`scroll ended early after ${result.tickCount} ticks (browser closed)`);
-    process.exit(EXIT_ERROR);
-  }
-
-  // Completed successfully - get extraction stats
+  // Get extraction stats
   const stats = extractor.getStats();
   const postsExtracted = stats.postsExtracted;
   const adsSkipped = stats.adsSkipped;
   const elapsedSec = Math.round(result.elapsedMs / 1000);
 
-  if (flags.dryRun) {
+  // Handle browser_closed - write what we collected
+  if (result.status === 'browser_closed') {
+    let summaryLine = `scroll ended early after ${result.tickCount} ticks (browser closed)`;
+
+    if (!isDryRun) {
+      try {
+        const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
+        const writeResult = await writeRawJson({
+          outputDir: config.output.dir,
+          runId,
+          posts: extractor.getPosts(),
+          stats,
+          meta: {
+            startedAt: startedAt.toISOString(),
+            endedAt: endedAt.toISOString(),
+            elapsedMs: result.elapsedMs,
+            tickCount: result.tickCount,
+            minutes: effectiveMinutes,
+            dryRun: isDryRun,
+          },
+        });
+
+        // Use tilde notation for display
+        const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+        summaryLine += ` — saved to ${displayPath}`;
+      } catch (error: any) {
+        summaryLine += ` — write failed: ${error.message}`;
+      }
+    }
+
+    console.log(summaryLine);
+    process.exit(EXIT_ERROR);
+  }
+
+  // Completed successfully
+  if (isDryRun) {
     console.log(
       `dry-run complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped), writer skipped`
     );
   } else {
-    console.log(
-      `scroll complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped)`
-    );
+    let summaryLine = `scroll complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped)`;
+
+    try {
+      const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
+      const writeResult = await writeRawJson({
+        outputDir: config.output.dir,
+        runId,
+        posts: extractor.getPosts(),
+        stats,
+        meta: {
+          startedAt: startedAt.toISOString(),
+          endedAt: endedAt.toISOString(),
+          elapsedMs: result.elapsedMs,
+          tickCount: result.tickCount,
+          minutes: effectiveMinutes,
+          dryRun: isDryRun,
+        },
+      });
+
+      // Use tilde notation for display
+      const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+      summaryLine += ` — saved to ${displayPath}`;
+
+      console.log(summaryLine);
+      process.exit(EXIT_SUCCESS);
+    } catch (error: any) {
+      summaryLine += ` — write failed: ${error.message}`;
+      console.log(summaryLine);
+      process.exit(EXIT_ERROR);
+    }
   }
 
   process.exit(EXIT_SUCCESS);

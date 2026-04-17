@@ -23,6 +23,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | foundation | [Extractor](.specs/features/foundation/extractor.feature.md) | `src/extract/extractor.ts` | tests/foundation/extractor.test.ts | - | implemented |
 | foundation | [Login Command](.specs/features/foundation/login.feature.md) | `src/cli/login.ts` | tests/foundation/login.test.ts, tests/foundation/cli-entry.test.ts | - | implemented |
 | foundation | [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md) | `package.json` | tests/foundation/project-scaffold.test.ts | - | implemented |
+| foundation | [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md) | `src/writer/raw-json.ts` | tests/foundation/raw-json-writer.test.ts | - | stub |
 | foundation | [Scroller](.specs/features/foundation/scroller.feature.md) | `src/scroll/scroller.ts` | tests/foundation/scroller.test.ts | - | implemented |
 
 ---
@@ -31,11 +32,11 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 | Status | Count |
 |--------|-------|
-| stub | 0 |
+| stub | 1 |
 | specced | 0 |
 | tested | 0 |
 | implemented | 6 |
-| **Total** | **6** |
+| **Total** | **7** |
 
 ---
 
@@ -43,7 +44,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 
 ### Stub
 
-_None_
+- [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md)
 
 ### Specced
 
