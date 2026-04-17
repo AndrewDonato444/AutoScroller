@@ -25,7 +25,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | foundation | [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md) | `package.json` | tests/foundation/project-scaffold.test.ts | - | implemented |
 | foundation | [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md) | `src/writer/raw-json.ts` | tests/foundation/raw-json-writer.test.ts | - | implemented |
 | foundation | [Scroller](.specs/features/foundation/scroller.feature.md) | `src/scroll/scroller.ts` | tests/foundation/scroller.test.ts | - | implemented |
-| foundation | [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md) | `src/state/dedup-cache.ts` | tests/foundation/state-dedup-cache.test.ts | - | specced |
+| foundation | [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md) | `src/state/dedup-cache.ts` | tests/foundation/state-dedup-cache.test.ts | - | implemented |
+| foundation | [State Module (Rolling Themes Store)](.specs/features/foundation/state-rolling-themes.feature.md) | `src/state/rolling-themes.ts` | tests/foundation/state-rolling-themes.test.ts | - | implemented |
 
 ---
 
@@ -34,10 +35,10 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | Status | Count |
 |--------|-------|
 | stub | 0 |
-| specced | 1 |
+| specced | 0 |
 | tested | 0 |
-| implemented | 7 |
-| **Total** | **8** |
+| implemented | 9 |
+| **Total** | **9** |
 
 ---
 
@@ -49,7 +50,7 @@ _None_
 
 ### Specced
 
-- [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md)
+_None_
 
 ### Tested
 
@@ -64,6 +65,8 @@ _None_
 - [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md)
 - [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md)
 - [Scroller](.specs/features/foundation/scroller.feature.md)
+- [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md)
+- [State Module (Rolling Themes Store)](.specs/features/foundation/state-rolling-themes.feature.md)
 
 ---
 
