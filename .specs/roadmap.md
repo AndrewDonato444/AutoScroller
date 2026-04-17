@@ -21,9 +21,9 @@
 
 | Status | Count |
 |--------|-------|
-| ✅ Completed | 3 |
+| ✅ Completed | 4 |
 | 🔄 In Progress | 0 |
-| ⬜ Pending | 11 |
+| ⬜ Pending | 10 |
 | ⏸️ Blocked | 0 |
 
 **Last updated**: 2026-04-16
@@ -39,7 +39,7 @@
 | 1 | Project scaffold (TS + pnpm + Node 20) | vision | - | S | - | ✅ |
 | 2 | Config loader (YAML + Zod validation) | vision | - | S | 1 | ✅ |
 | 3 | CLI entry + arg parsing (`scroll`, `login`, `--minutes`, `--dry-run`) | vision | - | S | 2 | ✅ |
-| 4 | Login command (Playwright persistent context, manual login) | vision | - | M | 3 | ⬜ |
+| 4 | Login command (Playwright persistent context, manual login) | vision | - | M | 3 | ✅ |
 | 5 | Scroller (human-like wheel scrolling + jitter + pauses) | vision | - | M | 4 | ⬜ |
 | 6 | Extractor (DOM parse: author, text, metrics, media, skip ads) | vision | - | L | 5 | ⬜ |
 | 7 | Raw JSON writer (`~/scrollproxy/runs/<run-id>/raw.json`) | vision | - | S | 6 | ⬜ |

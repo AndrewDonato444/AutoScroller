@@ -265,13 +265,87 @@ console.error(`(set DEBUG=${DEBUG_ENV_VAR} for full trace)`);
 - Complex error handling (50+ lines) → extract to `handleZodValidationError()`
 - Repeated logic across 3+ call sites → extract to helper function
 - Magic strings in error paths → extract to constants
+- Validation + setup logic that appears in multiple similar contexts → extract to `ensureUserDataDir()`
+- Success/failure detection with multi-line conditional logic → extract to `isLoginSuccessful()`
 
 **Keep inline when:**
 - Logic is already readable (20-line decision tree)
 - Used in only one place (`expandTilde` helper, 5 lines)
 - Standard values (`utf-8` encoding literal)
+- Contextual error messages that reference specific config fields — inline is clearer
+- Tightly coupled lifecycle management (try-catch-finally with promise resolution)
 
-**Why:** Extraction has a cost (indirection, naming, navigation). Only extract when the clarity or reuse benefit outweighs that cost. A 20-line decision tree that reads like prose doesn't need extraction.
+**Why:** Extraction has a cost (indirection, naming, navigation). Only extract when the clarity or reuse benefit outweighs that cost. A 20-line decision tree that reads like prose doesn't need extraction. Contextual error messages benefit from being near the validation logic they describe.
+
+### Exit Codes at Module Level
+
+Extract exit codes from function scope to module level for better organization:
+
+```typescript
+// Module level
+const EXIT_SUCCESS = 0;
+const EXIT_ERROR = 1;
+const EXIT_USAGE_ERROR = 2;
+
+export async function handleLogin(config: Config): Promise<void> {
+  if (config.browser.headless) {
+    console.error('login requires browser.headless: false');
+    process.exit(EXIT_USAGE_ERROR);
+  }
+  // ...
+  process.exit(EXIT_SUCCESS);
+}
+```
+
+**Why:** Named constants make Unix exit code conventions explicit and enable potential reuse across CLI commands. If multiple commands need consistent exit codes, they're defined once at the top.
+
+### Extract Helper Functions for Path Operations
+
+For path operations that need to happen in multiple phases (validation, creation, display), extract to helpers:
+
+```typescript
+// Helper: expand ~ to absolute path
+function expandHomeDir(path: string): string {
+  if (path.startsWith('~/')) {
+    return join(homedir(), path.slice(2));
+  }
+  if (path === '~') {
+    return homedir();
+  }
+  return path;
+}
+
+// Helper: validate and create directory
+function ensureUserDataDir(userDataDir: string): void {
+  if (existsSync(userDataDir)) {
+    const stats = statSync(userDataDir);
+    if (!stats.isDirectory()) {
+      console.error(`browser.userDataDir must be a directory: ${userDataDir}`);
+      process.exit(EXIT_USAGE_ERROR);
+    }
+  } else {
+    mkdirSync(userDataDir, { recursive: true });
+  }
+}
+
+// Usage
+const userDataDir = expandHomeDir(config.browser.userDataDir);
+ensureUserDataDir(userDataDir);
+```
+
+**Why:** Path expansion and validation are error-prone and need to happen in a specific order (expand, then validate, then create). Extracting to helpers makes the main function's intent clear and ensures the operations happen consistently. The main function went from 108 to ~75 lines — readable without being over-abstracted.
+
+### Extract URL Constants for Maintainability
+
+Extract URLs used in navigation to named constants:
+
+```typescript
+const X_LOGIN_URL = 'https://x.com/login';
+
+await page.goto(X_LOGIN_URL);
+```
+
+**Why:** If the URL changes (e.g., X rebrands again), it's updated in one place. The constant name documents what the URL is for.
 
 ---
 
@@ -294,3 +368,36 @@ source: src/cli/index.ts
 ```
 
 **Why:** Entry shims (like src/login.ts that routes pnpm login → src/cli/login.ts) are part of the feature's public surface. They may be added during scaffolding after the spec is written. Drift detection needs the complete list to verify alignment. If a file is invoked by package.json scripts or imported by the user, it's an entry point.
+
+### Spec Drift: Anticipated Architecture vs Actual Implementation
+
+**Problem:** Spec anticipated a modular split (e.g., `src/browser/session.ts` for Playwright plumbing), but implementation landed as a simpler inline version in `src/cli/login.ts`.
+
+**Why drift happened:** When writing the spec, it's natural to plan for modularity. During implementation, a 150-line feature doesn't need the extra abstraction. Simpler is better.
+
+**How to reconcile:** Update the spec header and frontmatter to list actual source files, remove nonexistent files. Don't create empty files just to match the spec.
+
+**Learning:** Specs are planning documents, not contracts. If implementation finds a simpler path that still meets all Gherkin scenarios, the spec should be updated to match reality.
+
+### Spec Mockups vs Code Reality: Path Expansion
+
+**Problem:** Spec mockup showed user-friendly shorthand `~/scrollproxy/chrome` in success message, but code expands `~` to absolute path before printing (e.g., `/Users/andrew/scrollproxy/chrome`).
+
+**Why drift happened:** Mockups prioritize readability and use the same vocabulary as config files. Code expands `~` early (before validation) so error messages and success messages all use absolute paths.
+
+**How to reconcile:** Clarify in the spec that `~` is expanded before printing, with a concrete example showing the resolved path.
+
+**Learning:** Mockups should use operator vocabulary, but when there's a mismatch between user input (`~`) and actual output (absolute path), the spec needs a note explaining the transformation.
+
+### Status Field Maintenance Across Phases
+
+**Problem:** Spec status was `specced` after spec creation, but wasn't bumped to `implemented` after tests passed and drift was checked.
+
+**Why drift happened:** The spec was updated during spec creation (status: specced), but the build/refactor/drift agents didn't update it again. Status tracking fell through the cracks.
+
+**How to prevent:** Each phase should update status:
+- After spec approved → `status: specced`
+- After tests written and passing → `status: tested`
+- After implementation complete and drift-checked → `status: implemented`
+
+**Learning:** Status is part of the frontmatter contract. If drift-check agents are reconciling spec vs code, they should also verify status matches reality and update it if needed.

@@ -19,6 +19,36 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
+### 2026-04-16: Login Command
+
+**Playwright:**
+- Use `launchPersistentContext(userDataDir)` (not `launch + newContext`) to persist cookies across runs
+- Browser context 'close' event fires when operator closes window (not programmatic close)
+- userDataDir must exist or be creatable — implemented recursive mkdir
+
+**Path Operations:**
+- Expand `~` in paths before ALL operations (validation, mkdir, display) via `expandHomeDir()` helper
+- Check if path is file vs directory (existsSync + statSync) before mkdir — clear error if path is a file
+- Early validation pattern: check config constraints before expensive operations (headless check before browser launch)
+
+**Helper Extraction:**
+- Exit codes extracted to module level for organization and potential reuse
+- Path expansion → `expandHomeDir()` helper (used 3+ times)
+- Directory validation + creation → `ensureUserDataDir()` helper (multi-step logic)
+- Success detection → `isLoginSuccessful()` helper (multi-line conditional)
+- Don't extract contextual error messages — inline is clearer
+
+**Testing:**
+- Test helper bugs are subtle (setTimeout resolving early caused false positives) — verify helpers work
+- Tests need proper config or they hang waiting for browser
+- Test duplication (runCli, config fixtures) is acceptable for self-containment
+- Skipping tests requiring external deps (Chromium) is OK — document with clear comments
+
+**Spec Drift:**
+- Anticipated modular split vs simpler inline implementation — update spec to match reality, don't create empty files
+- Spec mockups use `~` shorthand, code expands early — clarify transformation with concrete example
+- Status field maintenance: update at each phase boundary (specced → tested → implemented)
+
 ### 2026-04-16: CLI Entry + Arg Parsing
 
 **TypeScript:**

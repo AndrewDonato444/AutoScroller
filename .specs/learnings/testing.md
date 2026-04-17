@@ -157,3 +157,106 @@ catch (error) {
 ```
 
 **Why:** Vitest and other test frameworks expect Error instances with `.message` properties. Raw ZodError has `.issues` arrays and other non-standard shapes, making assertions brittle.
+
+---
+
+## Test Helpers
+
+### Test Helpers Can Have Subtle Bugs
+
+When writing custom test helpers (like a CLI process spawner), verify the helper works correctly before trusting test failures:
+
+```typescript
+// BAD: Early-resolve setTimeout causes false positives
+function runCli(args) {
+  return new Promise((resolve) => {
+    const child = spawn('tsx', args);
+    
+    setTimeout(() => {
+      resolve({ exitCode: null });  // Resolves early!
+    }, 100);
+    
+    child.on('close', (exitCode) => {
+      resolve({ exitCode });  // Never reached if timeout fires first
+    });
+  });
+}
+
+// GOOD: Timeout only fires if process hangs
+function runCli(args, options = {}) {
+  return new Promise((resolve) => {
+    const child = spawn('tsx', args);
+    let resolved = false;
+    
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        child.kill('SIGTERM');
+        resolved = true;
+        resolve({ exitCode: null });
+      }
+    }, options.timeout || 10000);
+    
+    child.on('close', (exitCode) => {
+      if (!resolved) {
+        clearTimeout(timeout);
+        resolved = true;
+        resolve({ exitCode });
+      }
+    });
+  });
+}
+```
+
+**Why:** The first version resolved after 100ms with `null` exitCode, causing tests to pass even when the CLI failed. The bug was discovered when all tests passed but the feature clearly didn't work. The fix: use a `resolved` flag and only resolve once.
+
+### Tests Requiring External Dependencies Can Be Skipped
+
+When tests require external binaries (like Chromium from Playwright), mark them `.skip()` with clear comments:
+
+```typescript
+describe('UT-LOGIN-003: Successful login detected from final URL', () => {
+  it.skip('should exit 0 when final URL is x.com/home', async () => {
+    // This test requires Playwright Chromium to be installed
+    // Run `pnpm exec playwright install chromium` to enable
+    const result = await runCli(['login'], { timeout: 5000 });
+    expect(result.exitCode).toBe(0);
+  });
+});
+```
+
+**Why:** Not all contributors have Playwright Chromium installed. Skipped tests document what should work but don't block test runs. They pass locally when dependencies are present, fail gracefully otherwise.
+
+### Tests Need Proper Config or They Hang
+
+When testing CLI commands that launch browsers, ensure the test config has `headless: false` or the proper error-handling setup:
+
+```typescript
+// If config has headless: true, the test must expect early exit
+const headlessConfigYaml = validConfigYaml.replace('headless: false', 'headless: true');
+
+it('should exit 2 when headless is true', async () => {
+  const configPath = join(testConfigDir, 'config.yaml');
+  writeFileSync(configPath, headlessConfigYaml, 'utf-8');
+  
+  const result = await runCli(['login'], { timeout: 2000 });  // Short timeout!
+  expect(result.exitCode).toBe(2);
+});
+```
+
+**Why:** Without proper config, tests can hang waiting for browser input. The login command validates headless early and exits, but tests need to set up config correctly or they'll timeout. Short timeouts on early-exit tests help catch config issues.
+
+### Test Duplication for Self-Containment
+
+Duplicating test helpers (like `runCli`) and config fixtures across test files is acceptable:
+
+```typescript
+// tests/foundation/login.test.ts
+function runCli(args, options) { /* ... */ }
+const validConfigYaml = `...`;
+
+// tests/foundation/scroll.test.ts
+function runCli(args, options) { /* ... duplicate */ }
+const validConfigYaml = `...`;  /* duplicate */
+```
+
+**Why:** Each test file is self-contained and can be understood in isolation. Extracting shared helpers to a central test-utils file adds coupling and navigation cost. If the helper evolves differently for different test suites, the duplication was the right call.

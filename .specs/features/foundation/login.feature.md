@@ -242,4 +242,82 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound after implementation -->
+### Playwright Architecture
+
+**launchPersistentContext vs launch + newContext**: Used `chromium.launchPersistentContext(userDataDir, ...)` instead of `chromium.launch()` then `browser.newContext()`. The persistent context API is the only way to ensure cookies and storage persist across runs.
+
+**Why:** `launch + newContext` creates ephemeral contexts that lose state on close. The persistent context API guarantees the userDataDir is reused and all Chromium state (cookies, localStorage, IndexedDB) survives across CLI invocations. This is the authentication mechanism.
+
+### Browser Event Handling
+
+**Context 'close' event fires when operator closes window**, not when we call `context.close()` programmatically. The pattern is:
+
+```typescript
+await new Promise<void>((resolve) => {
+  context.on('close', () => resolve());
+});
+```
+
+**Why:** The operator controls when login completes by closing the window. We can't poll or timeout — we wait for the close event, then check the final URL.
+
+### Path Validation Gotchas
+
+**Check if path is file vs directory before mkdir**: Use `existsSync + statSync` to detect file-vs-directory conflicts:
+
+```typescript
+if (existsSync(userDataDir)) {
+  const stats = statSync(userDataDir);
+  if (!stats.isDirectory()) {
+    console.error(`browser.userDataDir must be a directory: ${userDataDir}`);
+    process.exit(2);
+  }
+}
+```
+
+**Why:** If the operator typos the config and points userDataDir at a file, `mkdirSync` fails with a cryptic ENOTDIR error. This gives a clear, actionable message.
+
+**Expand ~ before all path operations**: Extract `expandHomeDir(path)` helper that runs before validation and mkdir. Otherwise `existsSync('~/foo')` always returns false (~ is not expanded by Node.js fs functions).
+
+### Early Validation Pattern
+
+**Validate config constraints before expensive operations**: Check `browser.headless` before launching Playwright:
+
+```typescript
+if (config.browser.headless) {
+  console.error(`login requires browser.headless: false — edit ${configPath} and re-run`);
+  process.exit(2);
+}
+```
+
+**Why:** Launching Playwright is slow (~2s). If the config is invalid, exit immediately with a clear fix. The operator gets feedback in <100ms instead of waiting for browser launch then seeing an obscure error.
+
+### Helper Extraction Criteria
+
+**When to extract:**
+- Repeated validation logic (userDataDir create + validate) → `ensureUserDataDir()`
+- Path operations used multiple times (~ expansion) → `expandHomeDir()`
+- Success/failure detection with multi-line logic → `isLoginSuccessful()`
+- Shared constants (exit codes, URLs) → module-level constants
+
+**When to keep inline:**
+- Contextual error messages that reference specific config fields
+- One-time operations like the try-catch-finally browser lifecycle
+- Error handlers tightly coupled with promise resolution
+
+**Why:** Extraction has a cost (naming, navigation, indirection). Only extract when the clarity or reuse benefit justifies it. The main function went from 108 to ~75 lines — readable without being over-abstracted.
+
+### Test Reliability
+
+**Test helper bugs are subtle**: The initial `runCli` helper had a setTimeout that resolved the promise early with `null exitCode`, causing false positives. Fixed by removing the early-resolve logic.
+
+**Tests that spawn real processes need proper cleanup**: Use timeout + kill pattern, but ensure the timeout handler checks a `resolved` flag to avoid double-resolution race conditions.
+
+**Tests requiring external dependencies can be skipped**: Tests that need Chromium installed or real browser interaction are marked `.skip()` with clear comments. They pass locally when Chromium is installed but don't block CI/other contributors.
+
+### Spec Drift Root Causes
+
+**Anticipated architecture vs actual implementation**: Spec listed `src/browser/session.ts` as a source file (anticipating modular split), but implementation landed as inline Playwright calls in `src/cli/login.ts`. Simpler is better for a ~150-line feature.
+
+**Spec mockups use user-friendly shorthand, code expands early**: Spec showed `~/scrollproxy/chrome` in success message, but code expands `~` to absolute path before printing. Updated spec to clarify this with a concrete example.
+
+**Status maintenance across phases**: Status was `specced` after spec creation, but wasn't bumped to `implemented` after tests passed. The drift-check agent caught this. Status should be updated at each phase boundary (spec → tested → implemented).
