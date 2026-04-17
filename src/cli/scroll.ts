@@ -2,6 +2,7 @@ import type { Config } from '../config/schema.js';
 import { runScroll, expandHomeDir, type ScrollResult } from '../scroll/scroller.js';
 import { createExtractor } from '../extract/extractor.js';
 import { writeRawJson, generateRunId } from '../writer/raw-json.js';
+import { loadDedupCache, saveDedupCache, partitionPosts, appendHashes } from '../state/dedup-cache.js';
 
 export interface ScrollFlags {
   minutes?: number;
@@ -70,10 +71,11 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     if (!isDryRun) {
       try {
         const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
+        const posts = extractor.getPosts();
         const writeResult = await writeRawJson({
           outputDir: config.output.dir,
           runId,
-          posts: extractor.getPosts(),
+          posts,
           stats,
           meta: {
             startedAt: startedAt.toISOString(),
@@ -85,9 +87,24 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
           },
         });
 
-        // Use tilde notation for display
-        const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
-        summaryLine += ` — saved to ${displayPath}`;
+        // Update dedup cache (browser closed with recovered posts)
+        try {
+          const cache = await loadDedupCache(config.output.state);
+          const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
+          const updatedCache = appendHashes(cache, newHashes);
+          await saveDedupCache(updatedCache, config.output.state);
+
+          // Use tilde notation for display
+          const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+          summaryLine += ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+        } catch (cacheError: any) {
+          // Dedup cache failure is non-fatal
+          const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+          summaryLine += ` — saved to ${displayPath}`;
+          console.log(summaryLine);
+          console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);
+          process.exit(EXIT_ERROR);
+        }
       } catch (error: any) {
         summaryLine += ` — write failed: ${error.message}`;
       }
@@ -107,10 +124,11 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
 
     try {
       const endedAt = new Date(startedAt.getTime() + result.elapsedMs);
+      const posts = extractor.getPosts();
       const writeResult = await writeRawJson({
         outputDir: config.output.dir,
         runId,
-        posts: extractor.getPosts(),
+        posts,
         stats,
         meta: {
           startedAt: startedAt.toISOString(),
@@ -122,9 +140,24 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
         },
       });
 
-      // Use tilde notation for display
-      const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
-      summaryLine += ` — saved to ${displayPath}`;
+      // Update dedup cache after successful raw.json write
+      try {
+        const cache = await loadDedupCache(config.output.state);
+        const { newPosts, seenPosts, newHashes } = partitionPosts(posts, cache);
+        const updatedCache = appendHashes(cache, newHashes);
+        await saveDedupCache(updatedCache, config.output.state);
+
+        // Use tilde notation for display
+        const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+        summaryLine += ` — ${newPosts.length} new, ${seenPosts.length} already seen — saved to ${displayPath}`;
+      } catch (cacheError: any) {
+        // Dedup cache failure is non-fatal - the raw.json is safe
+        const displayPath = writeResult.rawJsonPath.replace(expandHomeDir('~'), '~');
+        summaryLine += ` — saved to ${displayPath}`;
+        console.log(summaryLine);
+        console.log(`dedup cache failed: ${cacheError.message} (next run will re-count some posts as new)`);
+        process.exit(EXIT_SUCCESS);
+      }
 
       console.log(summaryLine);
       process.exit(EXIT_SUCCESS);

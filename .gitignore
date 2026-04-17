@@ -13,7 +13,7 @@ dist/
 
 # ScrollProxy data
 runs/
-state/
+/state/
 *.log
 
 # Logs
