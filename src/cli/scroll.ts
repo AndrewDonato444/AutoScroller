@@ -1,5 +1,6 @@
 import type { Config } from '../config/schema.js';
 import { runScroll, expandHomeDir, type ScrollResult } from '../scroll/scroller.js';
+import { createExtractor } from '../extract/extractor.js';
 
 export interface ScrollFlags {
   minutes?: number;
@@ -23,6 +24,9 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   // Print startup line
   console.log(`scrolling x.com for ${effectiveMinutes}m (persistent context: ${resolvedUserDataDir})`);
 
+  // Create extractor instance
+  const extractor = createExtractor();
+
   // Run the scroll
   const result: ScrollResult = await runScroll({
     userDataDir: config.browser.userDataDir,
@@ -33,6 +37,7 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     longPauseEvery: config.scroll.longPauseEvery,
     longPauseMs: config.scroll.longPauseMs,
     dryRun: flags.dryRun ?? false,
+    onTick: extractor.onTick,
   });
 
   // Handle result
@@ -51,12 +56,20 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
     process.exit(EXIT_ERROR);
   }
 
-  // Completed successfully
+  // Completed successfully - get extraction stats
+  const stats = extractor.getStats();
+  const postsExtracted = stats.postsExtracted;
+  const adsSkipped = stats.adsSkipped;
   const elapsedSec = Math.round(result.elapsedMs / 1000);
+
   if (flags.dryRun) {
-    console.log(`dry-run complete: ${result.tickCount} ticks over ${elapsedSec}s — extractor and writer skipped`);
+    console.log(
+      `dry-run complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped), writer skipped`
+    );
   } else {
-    console.log(`scroll complete: ${result.tickCount} ticks over ${elapsedSec}s — extractor not yet wired`);
+    console.log(
+      `scroll complete: ${result.tickCount} ticks over ${elapsedSec}s — ${postsExtracted} posts extracted (${adsSkipped} ads skipped)`
+    );
   }
 
   process.exit(EXIT_SUCCESS);
