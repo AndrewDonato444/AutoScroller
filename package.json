@@ -1,0 +1,35 @@
+{
+  "name": "scrollproxy",
+  "version": "0.0.1",
+  "description": "CLI tool to scroll through feeds, capture content, and summarize with Claude",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "scroll": "tsx src/index.ts",
+    "login": "tsx src/cli/login.ts",
+    "replay": "tsx src/cli/replay.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "cli",
+    "automation",
+    "feed",
+    "scrolling"
+  ],
+  "author": "Andrew Donato",
+  "license": "SEE LICENSE IN LICENSE",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "dependencies": {}
+}

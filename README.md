@@ -1,89 +1,46 @@
-# SDD: Spec-Driven Development + Compound Learning
+# ScrollProxy
 
-A framework for AI-assisted development that combines:
-- **Spec-Driven Development (SDD)** - Define behavior before implementing
-- **Red-Green-Refactor TDD** - Failing tests → implement → clean up (via `/tdd` command)
-- **User Personas** - Specs are written in users' language, scoped to their patience
-- **Personality-Driven Design** - Design system derived from vision, not generic templates
-- **Compound Learning** - Agent gets smarter from every session
-- **Roadmap-Driven Automation** - Build entire apps feature-by-feature
-- **Overnight Automation** - Wake up to draft PRs
+CLI tool to scroll X so you don't have to, then tell you what was worth seeing.
 
-Works with both **Cursor** and **Claude Code**. Build scripts (`build-loop-local.sh`, `overnight-autonomous.sh`) support either CLI — set `CLI_PROVIDER=cursor` or `CLI_PROVIDER=claude` in `.env.local`.
+Run the command. Get the summary. Close the laptop. No open-ended browsing.
 
-## Installation
-
-### Option 1: Git Alias (Recommended)
-
-Add to your `~/.gitconfig`:
-
-```ini
-[alias]
-    auto = "!f() { git clone --depth 1 https://github.com/AdrianRogowski/auto-sdd.git .sdd-temp && rm -rf .sdd-temp/.git && cp -r .sdd-temp/. . && rm -rf .sdd-temp && echo \"SDD $(cat VERSION 2>/dev/null || echo latest) installed! Run /spec-first to create your first feature spec.\"; }; f"
-```
-
-Then in any project:
-
-```bash
-git auto
-```
-
-This copies all SDD files into your current project:
-- `VERSION` - Framework version (semver)
-- `.cursor/` - Cursor rules, commands, hooks
-- `.claude/` - Claude Code commands
-- `.specs/` - Feature specs, learnings, design system, personas, roadmap
-- `scripts/` - Automation scripts
-- `CLAUDE.md` - Agent instructions
-
-### Option 2: Manual Clone
-
-```bash
-git clone https://github.com/AdrianRogowski/auto-sdd.git
-cp -r auto-sdd/.cursor auto-sdd/.claude auto-sdd/.specs auto-sdd/scripts auto-sdd/CLAUDE.md .
-rm -rf auto-sdd
-```
-
-### Upgrading an Existing SDD Project
-
-If you have an existing SDD project (any version), **do NOT run `git auto`** — it would overwrite your files.
-
-Instead, use the two-step upgrade process:
-
-```bash
-# Step 1: Stage the latest files (creates .sdd-upgrade/ directory)
-git auto-upgrade
-
-# Step 2: Run the upgrade (in Cursor or Claude Code)
-/sdd-migrate
-```
-
-This works for any version → latest (1.0→2.1, 2.0→2.1, etc.). Custom commands and rules are preserved; only stock SDD files are updated. See `CHANGELOG.md` for what's new in each version.
-
-**Git alias for `auto-upgrade`** (add to `~/.gitconfig`):
-
-```ini
-[alias]
-    auto-upgrade = "!f() { git clone --depth 1 https://github.com/AdrianRogowski/auto-sdd.git .sdd-temp && rm -rf .sdd-temp/.git && mkdir -p .sdd-upgrade && cp -r .sdd-temp/. .sdd-upgrade/ && rm -rf .sdd-temp && echo \"SDD $(cat .sdd-upgrade/VERSION 2>/dev/null || echo latest) files staged in .sdd-upgrade/\" && echo 'Now run /sdd-migrate to upgrade'; }; f"
-```
-
-### Post-Install (Optional: Overnight Automation)
-
-```bash
-# Install dependencies
-brew install yq gh
-
-# Configure Slack/Jira integration
-cp .env.local.example .env.local
-nano .env.local
-
-# Set up scheduled jobs
-./scripts/setup-overnight.sh
-```
+ScrollProxy logs into X using a persistent browser session, scrolls your feed for a configurable number of minutes, extracts every post, and uses Claude to produce a structured summary that answers: What were the dominant themes? Who posted something worth attention? What's new vs. already seen? What should you actually click into and read?
 
 ## Quick Start
 
-After installing, use the slash commands:
+```bash
+# Install dependencies
+pnpm install
+
+# Run the scroller (feed not yet wired)
+pnpm scroll
+
+# Login to X (placeholder — not yet implemented)
+pnpm login
+
+# Replay a previous run (placeholder — not yet implemented)
+pnpm replay
+```
+
+## Requirements
+
+- Node 20+ (enforced via engines field)
+- pnpm 8+
+- Your own Claude API key (configured in feature 2)
+- macOS (tested on Mac only)
+
+## How It Works
+
+1. **Scroll**: Automated browser (Playwright) opens X, scrolls your feed with human-like behavior
+2. **Extract**: Parse DOM, pull structured post data from the timeline
+3. **Summarize**: Claude reads everything, ruthlessly edits, surfaces what's worth clicking
+4. **Write**: Markdown summary written to `~/scrollproxy/runs/{date}.md`
+
+Run `pnpm scroll` and get a file. That's the interface.
+
+## Development
+
+Built using Spec-Driven Development (SDD). After installing, use the slash commands:
 
 ```
 /vision "CRM for real estate"      # Define what you're building

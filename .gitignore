@@ -1,8 +1,20 @@
 # SDD Migration staging directory
 .sdd-upgrade/
 
+# Node.js
+node_modules/
+dist/
+*.tsbuildinfo
+
 # Environment files
+.env
 .env.local
+.env.*.local
+
+# ScrollProxy data
+runs/
+state/
+*.log
 
 # Logs
 logs/*.log
