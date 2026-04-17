@@ -145,7 +145,7 @@ async function handleLoginCommand(flags: Record<string, string | boolean>) {
  * Handle the replay command.
  */
 async function handleReplayCommand(flags: Record<string, string | boolean>, positionals: string[]) {
-  const allowedFlags = ['help', 'h', 'version', 'v', 'config'];
+  const allowedFlags = ['help', 'h', 'version', 'v', 'config', 'dry-run'];
   validateFlagsOrExit(flags, allowedFlags);
 
   // Check for required run-id positional
@@ -156,7 +156,8 @@ async function handleReplayCommand(flags: Record<string, string | boolean>, posi
 
   const runId = positionals[0];
   const config = await loadConfigFromFlags(flags);
-  await handleReplay(config, runId);
+  const dryRun = flags['dry-run'] === true;
+  await handleReplay(config, runId, dryRun);
 }
 
 // Run main

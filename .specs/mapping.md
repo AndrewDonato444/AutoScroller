@@ -25,6 +25,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | foundation | [Markdown Writer](.specs/features/foundation/markdown-writer.feature.md) | `src/writer/markdown.ts` | tests/foundation/markdown-writer.test.ts | - | implemented |
 | foundation | [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md) | `package.json` | tests/foundation/project-scaffold.test.ts | - | implemented |
 | foundation | [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md) | `src/writer/raw-json.ts` | tests/foundation/raw-json-writer.test.ts | - | implemented |
+| foundation | [Replay Flag](.specs/features/foundation/replay-flag.feature.md) | `src/cli/replay.ts` | tests/foundation/replay.test.ts | - | implemented |
 | foundation | [Scroller](.specs/features/foundation/scroller.feature.md) | `src/scroll/scroller.ts` | tests/foundation/scroller.test.ts | - | implemented |
 | foundation | [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md) | `src/state/dedup-cache.ts` | tests/foundation/state-dedup-cache.test.ts | - | implemented |
 | foundation | [State Module (Rolling Themes Store)](.specs/features/foundation/state-rolling-themes.feature.md) | `src/state/rolling-themes.ts` | tests/foundation/state-rolling-themes.test.ts | - | implemented |
@@ -39,8 +40,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | stub | 0 |
 | specced | 0 |
 | tested | 0 |
-| implemented | 11 |
-| **Total** | **11** |
+| implemented | 12 |
+| **Total** | **12** |
 
 ---
 
@@ -67,6 +68,7 @@ _None_
 - [Markdown Writer](.specs/features/foundation/markdown-writer.feature.md)
 - [Project Scaffold](.specs/features/foundation/project-scaffold.feature.md)
 - [Raw JSON Writer](.specs/features/foundation/raw-json-writer.feature.md)
+- [Replay Flag](.specs/features/foundation/replay-flag.feature.md)
 - [Scroller](.specs/features/foundation/scroller.feature.md)
 - [State Module (Dedup Cache)](.specs/features/foundation/state-dedup-cache.feature.md)
 - [State Module (Rolling Themes Store)](.specs/features/foundation/state-rolling-themes.feature.md)
