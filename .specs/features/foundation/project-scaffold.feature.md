@@ -162,4 +162,10 @@ Frustrations addressed:
 
 ## Learnings
 
-<!-- Updated via /compound after implementation -->
+### Test Strategy
+
+**Pull test runner forward if it gives regression coverage with zero implementation cost.** Originally planned to add vitest in feature 2 (Zod schema), but pulling it forward to feature 1 (scaffold) cost nothing and gave the scaffold its own regression tests (UT-001 through UT-006). This pattern applies to any foundational infrastructure: if the tool is needed eventually and can validate the current feature without scope creep, ship it now.
+
+### Spec Maintenance
+
+**Keep "Source File" header and "Out of Scope" in sync with actual implementation decisions.** The spec header initially listed only 4 source files but the implementation shipped 6 (added src/cli/login.ts and src/cli/replay.ts as placeholder stubs). The "Out of Scope" section said "test runner setup in feature 2" but vitest shipped in this feature. Drift was caught in Layer 2 check and reconciled. Lesson: when scope evolves during implementation, update the spec header and exclusions before committing.

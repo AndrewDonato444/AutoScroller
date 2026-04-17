@@ -19,7 +19,24 @@ Cross-cutting patterns learned in this codebase. Updated via `/compound`.
 
 <!-- /compound adds recent learnings here - newest first -->
 
-_No learnings yet. Run `/compound` at the end of implementation sessions._
+### 2026-04-16: Project Scaffold
+
+**Testing:**
+- Test-the-scaffold pattern for foundational features (validate structure, not behavior)
+- CLI integration tests with try/catch for error capture (stdout/stderr visibility)
+- Negative assertions for anti-patterns (explicitly test forbidden deps don't exist)
+
+**Tooling:**
+- ESM requires `import.meta.url` + `fileURLToPath` instead of `__dirname`
+- Always commit lock files (pnpm-lock.yaml) for reproducible installs
+- Use engines field in package.json for fast-fail on wrong Node/pnpm version
+
+**Code Style:**
+- TypeScript interfaces for JSON.parse eliminate implicit `any`
+- Named constants for magic strings (self-documenting)
+- Read package.json for version/name (DRY, single source of truth)
+- Verb-based script naming (scroll, login, replay) not nouns
+- Avoid premature abstraction for placeholder stubs that will be replaced
 
 ---
 
