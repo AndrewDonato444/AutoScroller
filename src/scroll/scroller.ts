@@ -179,12 +179,41 @@ async function initializeBrowserSession(
     browserClosed = true;
   });
 
-  // Get or create the first page
+  // Pick a page to scroll. Prefer an existing x.com tab if one's already open
+  // (avoids the "new tab in collapsed headless-ish state" problem where CDP
+  // tabs render at 0x0 and match no DOM selectors). Fall back to the first
+  // tab, then to creating a new one.
   const pages = context.pages();
-  const page = pages.length > 0 ? pages[0] : await context.newPage();
+  let page: Page;
+  const xTab = pages.find((p) => p.url().includes('x.com'));
+  if (xTab) {
+    page = xTab;
+  } else if (pages.length > 0) {
+    page = pages[0];
+  } else {
+    page = await context.newPage();
+  }
 
-  // Navigate to X home
-  await page.goto(X_HOME_URL);
+  // Force a real viewport on the page BEFORE navigating. CDP-attached Chrome
+  // sometimes gives new tabs a 0x0 or tiny viewport depending on window state,
+  // which causes X's timeline to never render. setViewportSize is a no-op in
+  // persistent-context mode but necessary for CDP.
+  try {
+    await page.setViewportSize(viewport);
+  } catch {
+    // setViewportSize can fail if the page is in a weird state; not fatal.
+  }
+
+  // Navigate to X home (or reload if we're already there — forces a fresh feed).
+  if (page.url().includes('x.com/home')) {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  } else {
+    await page.goto(X_HOME_URL, { waitUntil: 'domcontentloaded' });
+  }
+
+  // Give X a moment to render the timeline after DOMContentLoaded.
+  // Without this, early scroll ticks can miss posts that are lazy-hydrated.
+  await page.waitForTimeout(3000);
 
   // Check if logged in
   const currentUrl = page.url();

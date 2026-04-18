@@ -20,6 +20,10 @@
     <string>--disable-background-timer-throttling</string>
     <string>--disable-backgrounding-occluded-windows</string>
     <string>--disable-renderer-backgrounding</string>
+    <!-- Force a real window size so CDP-created tabs don't render at 0x0
+         when Chrome has been running with no tabs. -->
+    <string>--window-size=1280,900</string>
+    <string>--window-position=100,100</string>
     <!-- Start URL so there's always a tab to attach to -->
     <string>https://x.com/home</string>
   </array>
