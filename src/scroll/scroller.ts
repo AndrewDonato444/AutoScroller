@@ -179,19 +179,31 @@ async function initializeBrowserSession(
     browserClosed = true;
   });
 
-  // Pick a page to scroll. Prefer an existing x.com tab if one's already open
-  // (avoids the "new tab in collapsed headless-ish state" problem where CDP
-  // tabs render at 0x0 and match no DOM selectors). Fall back to the first
-  // tab, then to creating a new one.
+  // Pick a page to scroll. Strongly prefer an x.com/home tab. If the profile
+  // has stale tabs from prior runs (search results, post detail, promoted
+  // trend clicks, etc.), CLOSE them — leaving them around risks our extractor
+  // attaching to the wrong page type, which has different DOM selectors and
+  // yields zero posts.
   const pages = context.pages();
-  let page: Page;
-  const xTab = pages.find((p) => p.url().includes('x.com'));
-  if (xTab) {
-    page = xTab;
-  } else if (pages.length > 0) {
-    page = pages[0];
-  } else {
-    page = await context.newPage();
+  let page: Page | undefined;
+
+  // First pass: find an x.com/home tab to keep.
+  page = pages.find((p) => p.url().includes('x.com/home'));
+
+  // Second pass: close any other x.com tabs that aren't /home. They're either
+  // stale session restores (Mortal Kombat II...) or dead navigations.
+  for (const p of pages) {
+    if (p === page) continue;
+    const url = p.url();
+    if (url.includes('x.com') && !url.includes('x.com/home')) {
+      try { await p.close(); } catch { /* non-fatal */ }
+    }
+  }
+
+  // If we didn't find a home tab, either grab any remaining page or create one.
+  if (!page) {
+    const remainingPages = context.pages();
+    page = remainingPages[0] ?? (await context.newPage());
   }
 
   // Force a real viewport on the page BEFORE navigating. CDP-attached Chrome
