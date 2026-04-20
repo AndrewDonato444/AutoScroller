@@ -320,8 +320,12 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   const startedAt = new Date();
   const runId = generateRunId(startedAt);
 
+  // Emit a distinguishing startup line. The `(dry-run)` marker matters both
+  // for operator feedback (so a dry-run is visually obvious) and for tests
+  // that need to verify the --dry-run flag actually reached this handler.
+  const dryRunMarker = isDryRun ? ' (dry-run)' : '';
   console.log(
-    `x-api pull: ${xConfig.lists.length} list(s)${xConfig.bookmarks.enabled ? ' + bookmarks' : ''}`
+    `x-api pull: ${xConfig.lists.length} list(s)${xConfig.bookmarks.enabled ? ' + bookmarks' : ''}${dryRunMarker}`
   );
 
   // Pull from X.

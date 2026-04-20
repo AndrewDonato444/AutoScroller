@@ -157,37 +157,48 @@ x:
   // new world lives in tests/expansion/retire-playwright.test.ts.
 
   describe('UT-CLI-004: --dry-run is parsed as a boolean and reaches handler', () => {
-    it('should pass dryRun flag to handler', async () => {
+    it('should pass dryRun=true to handler (startup line includes the marker)', async () => {
       const configPath = join(testConfigDir, 'config.yaml');
       writeFileSync(configPath, validConfigYaml, 'utf-8');
 
       const result = await runCli(['scroll', '--dry-run']);
 
-      // Should print the x-api startup line confirming dispatch reached handleScroll.
+      // "(dry-run)" appears on the startup line iff isDryRun === true, which
+      // only happens if --dry-run was parsed AND handleScroll took the correct
+      // branch. "x-api pull:" alone would fire regardless of the flag value.
+      expect(result.stdout).toContain('(dry-run)');
+    });
+
+    it('should not print the dry-run marker when --dry-run is absent', async () => {
+      const configPath = join(testConfigDir, 'config.yaml');
+      writeFileSync(configPath, validConfigYaml, 'utf-8');
+
+      const result = await runCli(['scroll']);
+
       expect(result.stdout).toContain('x-api pull:');
-      // dry-run should never write or summarize; exit code depends on whether
-      // the x-api call actually succeeds. The presence of the startup line is
-      // enough proof the dry-run path was taken.
+      expect(result.stdout).not.toContain('(dry-run)');
     });
   });
 
   describe('UT-CLI-005: --config <path> overrides config search order', () => {
-    it('should load config from explicit path', async () => {
+    it('should load config from the explicit path, not the default', async () => {
       // Write config to a custom location with a distinguishing list tag.
       const customConfigPath = join(testTmpDir, 'my-config.yaml');
       const customConfig = validConfigYaml.replace('tag: "test"', 'tag: "custom-tag-marker"');
       writeFileSync(customConfigPath, customConfig, 'utf-8');
 
-      // Write different config to home dir
+      // Write a DIFFERENT default config at the home-dir search location.
       const defaultConfigPath = join(testConfigDir, 'config.yaml');
       writeFileSync(defaultConfigPath, validConfigYaml, 'utf-8');
 
       const result = await runCli(['scroll', '--config', customConfigPath, '--dry-run']);
 
-      // The x-api startup confirms the handler dispatched. We don't assert on
-      // the list tag appearing in stdout (it may or may not depending on how
-      // far the pull gets) — just that the custom path was the one read.
-      expect(result.stdout).toContain('x-api pull:');
+      // The per-list breakdown in the "x-api complete:" line echoes each list's
+      // tag. If the custom config was loaded, "custom-tag-marker" appears; if
+      // --config was ignored and the default was loaded instead, only "test"
+      // (the default tag) would appear.
+      expect(result.stdout).toContain('custom-tag-marker');
+      expect(result.stdout).not.toContain('tag=test ');
     });
   });
 

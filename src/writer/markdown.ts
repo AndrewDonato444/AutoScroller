@@ -1,8 +1,5 @@
 import type { RunSummary } from '../summarizer/summarizer.js';
 import type { Writer, WriteContext, WriteReceipt } from './writer.js';
-// VisionStats retired with the Playwright era (April 2026). Preserved as a
-// local no-op shape so existing consumers that typed it optionally still compile.
-type VisionStats = Record<string, never>;
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -39,7 +36,6 @@ export interface MarkdownContext {
   summaryJsonPath: string; // Absolute path to summary.json
   displayRawJsonPath?: string; // ~-compressed path for display
   displaySummaryJsonPath?: string; // ~-compressed path for display
-  visionStats?: VisionStats; // Vision fallback stats (if rescue was triggered)
 }
 
 /**
@@ -174,14 +170,6 @@ function renderNoise(noise: RunSummary['noise']): string {
   return `${noise.count} posts skimmed as noise — ${examples}.\n`;
 }
 
-/**
- * Legacy no-op — vision fallback was retired with the Playwright source
- * layer in April 2026. Preserved only so any historical call site compiles;
- * no active source populates visionStats anymore.
- */
-function renderVisionBanner(_visionStats?: VisionStats): string | null {
-  return null;
-}
 
 /**
  * Render a summary to markdown.
@@ -208,12 +196,6 @@ export function renderSummaryMarkdown(summary: RunSummary, context: MarkdownCont
   lines.push(
     `**Verdict**: ${summary.feedVerdict} · **New**: ${summary.newVsSeen.newCount} · **Seen**: ${summary.newVsSeen.seenCount} · **Model**: ${summary.model}\n`
   );
-
-  // Vision rescue banner (if applicable)
-  const visionBanner = renderVisionBanner(context.visionStats);
-  if (visionBanner) {
-    lines.push(visionBanner);
-  }
 
   // Themes
   lines.push(`${HEADER_THEMES}\n`);
@@ -256,9 +238,8 @@ export async function writeSummaryMarkdown(params: {
   summaryJsonPath?: string;
   displayRawJsonPath?: string;
   displaySummaryJsonPath?: string;
-  visionStats?: VisionStats;
 }): Promise<{ summaryMdPath: string }> {
-  const { runDir, summary, rawJsonPath, summaryJsonPath, displayRawJsonPath, displaySummaryJsonPath, visionStats } = params;
+  const { runDir, summary, rawJsonPath, summaryJsonPath, displayRawJsonPath, displaySummaryJsonPath } = params;
 
   // Default summaryJsonPath if not provided
   const effectiveSummaryJsonPath = summaryJsonPath || join(runDir, SUMMARY_JSON_FILENAME);
@@ -269,7 +250,6 @@ export async function writeSummaryMarkdown(params: {
     summaryJsonPath: effectiveSummaryJsonPath,
     displayRawJsonPath,
     displaySummaryJsonPath,
-    visionStats,
   };
 
   // Render markdown
@@ -305,7 +285,6 @@ export const markdownWriter: Writer = {
         summaryJsonPath: context.summaryJsonPath,
         displayRawJsonPath: context.displayRawJsonPath,
         displaySummaryJsonPath: context.displaySummaryJsonPath,
-        visionStats: context.visionStats,
       });
 
       const displayPath = context.displayRawJsonPath
