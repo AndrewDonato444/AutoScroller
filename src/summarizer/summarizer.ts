@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { ExtractedPost } from '../extract/extractor.js';
+import type { ExtractedPost } from '../types/post.js';
 
 /**
  * Schema version for summary files.

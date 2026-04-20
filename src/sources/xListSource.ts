@@ -17,7 +17,7 @@
 
 import { xGet, getAuthenticatedUser } from './xApiClient.js';
 import { adaptListResponse, type XApiListResponse } from './xListAdapter.js';
-import type { ExtractedPost } from '../extract/extractor.js';
+import type { ExtractedPost } from '../types/post.js';
 
 /** Shape of the x.lists[] entries in config.yaml. Mirrors configSchema.x.lists. */
 export interface XListConfig {

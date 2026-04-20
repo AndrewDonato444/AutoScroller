@@ -220,7 +220,10 @@ function postProcessConfig(config: Config, homeDir: string): Config {
     return path;
   };
 
-  config.browser.userDataDir = expandTilde(config.browser.userDataDir);
+  // browser section is vestigial post-Playwright retirement; guard access.
+  if (config.browser?.userDataDir) {
+    config.browser.userDataDir = expandTilde(config.browser.userDataDir);
+  }
   config.output.dir = expandTilde(config.output.dir);
   config.output.state = expandTilde(config.output.state);
 

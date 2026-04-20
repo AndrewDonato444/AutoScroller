@@ -9,7 +9,7 @@ import {
   MAX_CACHE_SIZE,
   type DedupCache,
 } from '../../src/state/dedup-cache.js';
-import type { ExtractedPost } from '../../src/extract/extractor.js';
+import type { ExtractedPost } from '../src/types/post.js';
 import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

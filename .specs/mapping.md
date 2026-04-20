@@ -19,6 +19,7 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | Domain | Feature | Source | Tests | Components | Status |
 |--------|---------|--------|-------|------------|--------|
 | expansion | [Cross-Run Trend Detection](.specs/features/expansion/cross-run-trend-detection.feature.md) | `src/trends/trend-detector.ts` | tests/expansion/trend-detector.test.ts | - | implemented |
+| expansion | [Retire Playwright Source Layer](.specs/features/expansion/retire-playwright.feature.md) | `- src/cli/scroll.ts` | tests/expansion/retire-playwright.test.ts, tests/foundation/cli-entry.test.ts, tests/foundation/config-loader.test.ts, tests/foundation/project-scaffold.test.ts | - | implemented |
 | expansion | [Vision Fallback](.specs/features/expansion/vision-fallback.feature.md) | `src/extract/vision-fallback.ts` | tests/expansion/vision-fallback.test.ts | - | implemented |
 | expansion | [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md) | `src/writer/writer.ts` | tests/expansion/writer-interface.test.ts, tests/expansion/notion-writer.test.ts | - | implemented |
 | expansion | [X API Production Hardening](.specs/features/expansion/x-api-hardening.feature.md) | `- src/sources/xListAdapter.ts` | tests/expansion/x-api-hardening.test.ts | - | implemented |
@@ -45,8 +46,8 @@ _Regenerate with: `./scripts/generate-mapping.sh`_
 | stub | 0 |
 | specced | 0 |
 | tested | 0 |
-| implemented | 17 |
-| **Total** | **17** |
+| implemented | 18 |
+| **Total** | **18** |
 
 ---
 
@@ -67,6 +68,7 @@ _None_
 ### Implemented
 
 - [Cross-Run Trend Detection](.specs/features/expansion/cross-run-trend-detection.feature.md)
+- [Retire Playwright Source Layer](.specs/features/expansion/retire-playwright.feature.md)
 - [Vision Fallback](.specs/features/expansion/vision-fallback.feature.md)
 - [Writer Interface + NotionWriter](.specs/features/expansion/writer-interface-notion.feature.md)
 - [X API Production Hardening](.specs/features/expansion/x-api-hardening.feature.md)

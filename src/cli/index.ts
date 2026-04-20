@@ -3,10 +3,9 @@
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parseArgs, validateFlags, parseMinutesFlag, printHelp, printVersion } from './args.js';
+import { parseArgs, validateFlags, printHelp, printVersion } from './args.js';
 import { loadConfig } from '../config/load.js';
 import { handleScroll } from './scroll.js';
-import { handleLogin } from './login.js';
 import { handleReplay } from './replay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,16 +60,12 @@ async function main() {
         await handleScrollCommand(flags);
         break;
 
-      case 'login':
-        await handleLoginCommand(flags);
-        break;
-
       case 'replay':
         await handleReplayCommand(flags, positionals);
         break;
 
       default:
-        console.error(`unknown command: ${verb} (expected one of: scroll, login, replay)`);
+        console.error(`unknown command: ${verb} (expected one of: scroll, replay)`);
         process.exit(EXIT_USAGE_ERROR);
     }
 
@@ -113,44 +108,12 @@ async function loadConfigFromFlags(flags: Record<string, string | boolean>) {
  * Handle the scroll command.
  */
 async function handleScrollCommand(flags: Record<string, string | boolean>) {
-  const allowedFlags = ['help', 'h', 'version', 'v', 'minutes', 'dry-run', 'config', 'source'];
+  const allowedFlags = ['help', 'h', 'version', 'v', 'dry-run', 'config'];
   validateFlagsOrExit(flags, allowedFlags, 'scroll');
-
-  // Parse --minutes flag
-  let minutes: number | undefined;
-  try {
-    minutes = parseMinutesFlag(flags.minutes);
-  } catch (error: any) {
-    console.error(error.message);
-    process.exit(EXIT_USAGE_ERROR);
-  }
-
-  // Parse --source flag. Defaults to 'playwright' to preserve existing
-  // behavior for anyone who hasn't migrated yet.
-  let source: 'playwright' | 'x-api' = 'playwright';
-  const sourceFlag = flags.source;
-  if (typeof sourceFlag === 'string') {
-    if (sourceFlag !== 'playwright' && sourceFlag !== 'x-api') {
-      console.error(`--source must be 'playwright' or 'x-api' (got '${sourceFlag}')`);
-      process.exit(EXIT_USAGE_ERROR);
-    }
-    source = sourceFlag;
-  }
 
   const config = await loadConfigFromFlags(flags);
   const dryRun = flags['dry-run'] === true;
-  await handleScroll(config, { minutes, dryRun, source });
-}
-
-/**
- * Handle the login command.
- */
-async function handleLoginCommand(flags: Record<string, string | boolean>) {
-  const allowedFlags = ['help', 'h', 'version', 'v', 'config'];
-  validateFlagsOrExit(flags, allowedFlags, 'login');
-
-  const config = await loadConfigFromFlags(flags);
-  await handleLogin(config);
+  await handleScroll(config, { dryRun });
 }
 
 /**

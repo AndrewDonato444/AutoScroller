@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { summarizeRun, type SummarizerInput, type SummarizerResult, type RunSummary } from '../../src/summarizer/summarizer.js';
-import type { ExtractedPost } from '../../src/extract/extractor.js';
+import type { ExtractedPost } from '../src/types/post.js';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

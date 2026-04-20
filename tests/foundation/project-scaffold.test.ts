@@ -19,9 +19,8 @@ describe('Project Scaffold', () => {
     it('should have verb-based scripts', () => {
       const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf-8'));
 
-      // Required verb commands
+      // Required verb commands (post-Playwright retirement; login removed).
       expect(pkg.scripts.scroll).toBeDefined();
-      expect(pkg.scripts.login).toBeDefined();
       expect(pkg.scripts.replay).toBeDefined();
       expect(pkg.scripts.dev).toBeDefined();
       expect(pkg.scripts.build).toBeDefined();
@@ -31,6 +30,9 @@ describe('Project Scaffold', () => {
       const scriptNames = Object.keys(pkg.scripts);
       expect(scriptNames).not.toContain('extraction-service');
       expect(scriptNames).not.toContain('summarizer-runner');
+      // Retired verb commands
+      expect(scriptNames).not.toContain('login');
+      expect(scriptNames).not.toContain('chrome');
     });
 
     it('should have no hosted-product dependencies', () => {
@@ -104,15 +106,18 @@ describe('Project Scaffold', () => {
       expect(existsSync(indexPath)).toBe(true);
     });
 
-    it('should have module placeholder directories', () => {
+    it('should have module directories', () => {
+      // Post-Playwright retirement: src/scroller and src/extractor directories
+      // are gone; src/sources, src/types, and src/lib are the new homes.
       const expectedDirs = [
         'src/cli',
-        'src/scroller',
-        'src/extractor',
+        'src/sources',
+        'src/types',
+        'src/lib',
         'src/summarizer',
         'src/writer',
         'src/state',
-        'src/config'
+        'src/config',
       ];
 
       expectedDirs.forEach(dir => {
@@ -121,59 +126,14 @@ describe('Project Scaffold', () => {
       });
     });
 
-    it('should have .gitkeep in placeholder directories', () => {
-      const placeholderDirs = [
-        'src/scroller',
-        'src/extractor',
-        'src/summarizer',
-        'src/writer',
-        'src/state',
-        'src/config'
-      ];
-
-      placeholderDirs.forEach(dir => {
-        const gitkeepPath = join(rootDir, dir, '.gitkeep');
-        expect(existsSync(gitkeepPath)).toBe(true);
-      });
-    });
+    // .gitkeep assertion removed: the post-retirement directories all contain
+    // real TS files, so no placeholder file is needed.
   });
 
-  describe('UT-005: CLI execution', () => {
-    it('should run pnpm scroll and detect missing profile', () => {
-      try {
-        execSync('pnpm scroll', {
-          cwd: rootDir,
-          encoding: 'utf-8',
-          stdio: 'pipe'
-        });
-        // If we get here, that's unexpected
-        throw new Error('Expected pnpm scroll to exit with error when profile missing');
-      } catch (error: any) {
-        // Should exit with code 1 and print error about missing profile
-        expect(error.status).toBe(1);
-        const output = error.stdout + error.stderr;
-        expect(output).toContain('scrolling x.com for');
-        expect(output).toContain('no Chromium profile found');
-      }
-    });
-
-    it('should exit with status code 1 when profile missing', () => {
-      let exitCode = -1;
-
-      try {
-        execSync('pnpm scroll', {
-          cwd: rootDir,
-          encoding: 'utf-8',
-          stdio: 'pipe'
-        });
-        exitCode = 0;
-      } catch (error: any) {
-        exitCode = error.status;
-      }
-
-      expect(exitCode).toBe(1);
-    });
-  });
+  // UT-005 deleted in April 2026 when Playwright was retired: asserted the
+  // Playwright-era "scrolling x.com for" / "no Chromium profile found" error
+  // output. The x-api source has no Chrome profile concept. Regression coverage
+  // for the post-retirement state lives in tests/expansion/retire-playwright.test.ts.
 
   describe('UT-006: Repository files', () => {
     it('should have README.md describing ScrollProxy', () => {

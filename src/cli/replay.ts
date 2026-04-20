@@ -2,13 +2,13 @@ import type { Config } from '../config/schema.js';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { expandHomeDir } from '../scroll/scroller.js';
+import { expandHomeDir } from '../lib/expandHomeDir.js';
 import { summarizeRun, type SummarizerInput, type RunSummary } from '../summarizer/summarizer.js';
 import { loadThemesStore, recentThemes } from '../state/rolling-themes.js';
 import { runWriters, type Writer, type WriteContext } from '../writer/writer.js';
 import { markdownWriter } from '../writer/markdown.js';
 import { createNotionWriter } from '../writer/notion.js';
-import type { ExtractedPost } from '../extract/extractor.js';
+import type { ExtractedPost } from '../types/post.js';
 
 const EXIT_SUCCESS = 0;
 const EXIT_ERROR = 1;

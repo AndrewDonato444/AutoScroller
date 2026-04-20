@@ -10,7 +10,7 @@
  * for now — can be added in V2 without touching callers.
  */
 
-import type { ExtractedPost } from '../extract/extractor.js';
+import type { ExtractedPost } from '../types/post.js';
 
 /** Raw shape of a single tweet object from the X API v2. */
 export interface XApiTweet {

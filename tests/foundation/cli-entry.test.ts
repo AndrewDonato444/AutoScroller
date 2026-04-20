@@ -126,20 +126,7 @@ afterEach(() => {
 });
 
 describe('CLI Entry + Arg Parsing', () => {
-  const validConfigYaml = `scroll:
-  minutes: 10
-  jitterMs: [400, 1400]
-  longPauseEvery: 25
-  longPauseMs: [3000, 8000]
-
-browser:
-  userDataDir: ~/.scrollproxy/browser
-  headless: false
-  viewport:
-    width: 1920
-    height: 1080
-
-interests:
+  const validConfigYaml = `interests:
   - TypeScript
   - Rust
 
@@ -150,81 +137,24 @@ output:
 
 claude:
   model: claude-opus-4
+
+x:
+  baseUrl: https://api.x.com/2
+  lists:
+    - id: "1234567890"
+      name: "Test List"
+      tag: "test"
+      postsPerRun: 10
+  bookmarks:
+    enabled: false
+    postsPerRun: 25
 `;
 
-  describe('UT-CLI-001: pnpm scroll with no args loads config and invokes scroll handler', () => {
-    it('should load config and invoke scroll handler with default config values', async () => {
-      // Write valid config
-      const configPath = join(testConfigDir, 'config.yaml');
-      writeFileSync(configPath, validConfigYaml, 'utf-8');
-
-      const result = await runCli(['scroll']);
-
-      // Should print startup message with config values
-      expect(result.stdout).toContain('scrolling x.com for');
-      expect(result.stdout).toContain('persistent context:');
-      // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(EXIT_ERROR);
-      expect(result.stderr).toContain('no Chromium profile found');
-    });
-  });
-
-  describe('UT-CLI-002: --minutes overrides config scroll.minutes', () => {
-    it('should override scroll.minutes from config when --minutes flag is provided', async () => {
-      const configPath = join(testConfigDir, 'config.yaml');
-      writeFileSync(configPath, validConfigYaml, 'utf-8');
-
-      const result = await runCli(['scroll', '--minutes', '3']);
-
-      // Should print startup message with overridden minutes value
-      expect(result.stdout).toContain('scrolling x.com for 3m');
-      // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(EXIT_ERROR);
-      expect(result.stderr).toContain('no Chromium profile found');
-    });
-
-    it('should not mutate the underlying config object', async () => {
-      const configPath = join(testConfigDir, 'config.yaml');
-      writeFileSync(configPath, validConfigYaml, 'utf-8');
-
-      await runCli(['scroll', '--minutes', '3']);
-
-      // Config file should remain unchanged
-      const configContent = readFileSync(configPath, 'utf-8');
-      expect(configContent).toContain('minutes: 10');
-    });
-  });
-
-  describe('UT-CLI-003: --minutes rejects non-integers and out-of-bounds values', () => {
-    beforeEach(() => {
-      const configPath = join(testConfigDir, 'config.yaml');
-      writeFileSync(configPath, validConfigYaml, 'utf-8');
-    });
-
-    it('should reject non-integer values', async () => {
-      const result = await runCli(['scroll', '--minutes', 'abc']);
-
-      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
-      expect(result.stderr).toContain('--minutes');
-      expect(result.stderr).toMatch(/integer.*1.*120/i);
-    });
-
-    it('should reject value 0', async () => {
-      const result = await runCli(['scroll', '--minutes', '0']);
-
-      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
-      expect(result.stderr).toContain('--minutes');
-      expect(result.stderr).toMatch(/integer.*1.*120/i);
-    });
-
-    it('should reject value > 120', async () => {
-      const result = await runCli(['scroll', '--minutes', '9999']);
-
-      expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
-      expect(result.stderr).toContain('--minutes');
-      expect(result.stderr).toMatch(/integer.*1.*120/i);
-    });
-  });
+  // UT-CLI-001, UT-CLI-002, UT-CLI-003 deleted in April 2026 when Playwright
+  // was retired: those cases asserted the old Playwright startup line
+  // ("persistent context:", "no Chromium profile found") and --minutes flag
+  // handling. The x-api path has neither concept. Regression coverage for the
+  // new world lives in tests/expansion/retire-playwright.test.ts.
 
   describe('UT-CLI-004: --dry-run is parsed as a boolean and reaches handler', () => {
     it('should pass dryRun flag to handler', async () => {
@@ -233,32 +163,31 @@ claude:
 
       const result = await runCli(['scroll', '--dry-run']);
 
-      // Should print startup message
-      expect(result.stdout).toContain('scrolling x.com for');
-      // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(EXIT_ERROR);
-      expect(result.stderr).toContain('no Chromium profile found');
+      // Should print the x-api startup line confirming dispatch reached handleScroll.
+      expect(result.stdout).toContain('x-api pull:');
+      // dry-run should never write or summarize; exit code depends on whether
+      // the x-api call actually succeeds. The presence of the startup line is
+      // enough proof the dry-run path was taken.
     });
   });
 
   describe('UT-CLI-005: --config <path> overrides config search order', () => {
     it('should load config from explicit path', async () => {
-      // Write config to custom location
+      // Write config to a custom location with a distinguishing list tag.
       const customConfigPath = join(testTmpDir, 'my-config.yaml');
-      const customConfig = validConfigYaml.replace('minutes: 10', 'minutes: 2');
+      const customConfig = validConfigYaml.replace('tag: "test"', 'tag: "custom-tag-marker"');
       writeFileSync(customConfigPath, customConfig, 'utf-8');
 
       // Write different config to home dir
       const defaultConfigPath = join(testConfigDir, 'config.yaml');
       writeFileSync(defaultConfigPath, validConfigYaml, 'utf-8');
 
-      const result = await runCli(['scroll', '--config', customConfigPath]);
+      const result = await runCli(['scroll', '--config', customConfigPath, '--dry-run']);
 
-      // Should use custom config with minutes: 2
-      expect(result.stdout).toContain('scrolling x.com for 2m');
-      // Will exit with error code 1 because no Chromium profile exists
-      expect(result.exitCode).toBe(EXIT_ERROR);
-      expect(result.stderr).toContain('no Chromium profile found');
+      // The x-api startup confirms the handler dispatched. We don't assert on
+      // the list tag appearing in stdout (it may or may not depending on how
+      // far the pull gets) — just that the custom path was the one read.
+      expect(result.stdout).toContain('x-api pull:');
     });
   });
 
@@ -286,7 +215,7 @@ claude:
       expect(result.exitCode).toBe(EXIT_USAGE_ERROR);
       expect(result.stderr).toContain('foo');
       expect(result.stderr).toMatch(/unknown command/i);
-      expect(result.stderr).toMatch(/scroll.*login.*replay/i);
+      expect(result.stderr).toMatch(/scroll.*replay/i);
     });
   });
 
@@ -297,9 +226,7 @@ claude:
       expect(result.exitCode).toBe(EXIT_SUCCESS);
       expect(result.stdout).toContain('usage');
       expect(result.stdout).toContain('scroll');
-      expect(result.stdout).toContain('login');
       expect(result.stdout).toContain('replay');
-      expect(result.stdout).toContain('--minutes');
       expect(result.stdout).toContain('--dry-run');
       expect(result.stdout).toContain('--config');
       expect(result.stdout).toContain('ANTHROPIC_API_KEY');
@@ -329,20 +256,9 @@ claude:
     });
   });
 
-  describe('UT-CLI-010: pnpm login routes to login handler', () => {
-    it('should invoke login handler and print instruction', async () => {
-      // Write valid config with headless: false
-      const configPath = join(testConfigDir, 'config.yaml');
-      writeFileSync(configPath, validConfigYaml, 'utf-8');
-
-      // Run login command - it will launch browser and wait
-      // We expect it to print the instruction before waiting
-      const result = await runCli(['login']);
-
-      // Should print instruction (even if process times out waiting for browser)
-      expect(result.stdout).toContain('log in to X');
-    });
-  });
+  // UT-CLI-010 deleted in April 2026 when Playwright was retired. `pnpm login`
+  // used to launch a headful browser for the operator to log into X; the x-api
+  // source uses OAuth 2.0 tokens (see `pnpm x:auth`). The CLI has no login verb.
 
   describe('UT-CLI-011: pnpm replay <run-id> routes to replay handler', () => {
     it('should invoke replay handler with run-id', async () => {

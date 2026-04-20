@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeRawJson, generateRunId, type RunMeta } from '../../src/writer/raw-json.js';
-import type { ExtractedPost, SelectorFailure } from '../../src/extract/extractor.js';
+import type { ExtractedPost, SelectorFailure } from '../src/types/post.js';
 import { existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

@@ -1,6 +1,6 @@
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expandHomeDir } from '../scroll/scroller.js';
+import { expandHomeDir } from '../lib/expandHomeDir.js';
 
 /**
  * Schema version for the rolling themes store file.

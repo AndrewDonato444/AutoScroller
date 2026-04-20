@@ -5,9 +5,6 @@
  * Parses flags and positionals for verb-based commands.
  */
 
-const MIN_SCROLL_MINUTES = 1;
-const MAX_SCROLL_MINUTES = 120;
-
 export interface ParsedArgs {
   verb: string;
   flags: Record<string, string | boolean>;
@@ -80,50 +77,26 @@ export function validateFlags(
 }
 
 /**
- * Parse and validate --minutes flag.
- */
-export function parseMinutesFlag(value: string | boolean | undefined): number | undefined {
-  if (value === undefined || value === true) {
-    return undefined;
-  }
-
-  if (typeof value !== 'string') {
-    throw new Error('--minutes must be an integer between 1 and 120');
-  }
-
-  const num = parseInt(value, 10);
-  if (isNaN(num) || num < MIN_SCROLL_MINUTES || num > MAX_SCROLL_MINUTES) {
-    throw new Error(`--minutes must be an integer between ${MIN_SCROLL_MINUTES} and ${MAX_SCROLL_MINUTES}`);
-  }
-
-  return num;
-}
-
-/**
  * Print help text to stdout.
  */
 export function printHelp(version: string): void {
-  console.log(`scrollproxy v${version} — scroll the feed, save the signal
+  console.log(`scrollproxy v${version} — pull signal from your curated X lists
 
 usage:
-  pnpm scroll   [--source playwright|x-api] [--minutes <n>] [--dry-run] [--config <path>]
-  pnpm login    [--config <path>]
+  pnpm scroll   [--dry-run] [--config <path>]
   pnpm replay   <run-id> [--config <path>]
 
 flags:
-  --source <s>     data source: 'playwright' (default, scrolls the browser) or
-                   'x-api' (pulls from X API owned-reads; requires config.x).
-                   x-api bypasses the browser entirely.
-  --minutes <n>    override scroll.minutes from config (1..120).
-                   Ignored when --source=x-api.
-  --dry-run        extract only, skip summarizer + writer
+  --dry-run        pull from the X API and print per-list counts, skip
+                   write + summarize + writers
   --config <path>  load config from an explicit path
   --help, -h       show this message
   --version, -v    print version
 
 env:
   ANTHROPIC_API_KEY  used by the summarizer
-  X_BEARER_TOKEN     required when --source=x-api; bootstrapped by 'pnpm x:auth'`);
+  X_BEARER_TOKEN     user access token for the X API (bootstrap with 'pnpm x:auth',
+                     rotate with 'pnpm x:refresh')`);
 }
 
 /**

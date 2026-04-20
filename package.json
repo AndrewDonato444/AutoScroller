@@ -9,8 +9,6 @@
   },
   "scripts": {
     "scroll": "tsx src/index.ts",
-    "login": "tsx src/login.ts",
-    "chrome": "scripts/launch-chrome.sh",
     "replay": "tsx src/replay.ts",
     "x:auth": "tsx src/xAuth.ts",
     "x:refresh": "tsx src/xRefresh.ts",
@@ -39,7 +37,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@notionhq/client": "^5.18.0",
-    "playwright": "^1.59.1",
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
   }

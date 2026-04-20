@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ExtractedPost } from '../extract/extractor.js';
-import { expandHomeDir } from '../scroll/scroller.js';
+import type { ExtractedPost } from '../types/post.js';
+import { expandHomeDir } from '../lib/expandHomeDir.js';
 
 /**
  * Schema version for the dedup cache file.

@@ -1,6 +1,8 @@
 import type { RunSummary } from '../summarizer/summarizer.js';
 import type { Writer, WriteContext, WriteReceipt } from './writer.js';
-import type { VisionStats } from '../extract/vision-fallback.js';
+// VisionStats retired with the Playwright era (April 2026). Preserved as a
+// local no-op shape so existing consumers that typed it optionally still compile.
+type VisionStats = Record<string, never>;
 import { writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -173,23 +175,11 @@ function renderNoise(noise: RunSummary['noise']): string {
 }
 
 /**
- * Render vision rescue banner if applicable.
+ * Legacy no-op — vision fallback was retired with the Playwright source
+ * layer in April 2026. Preserved only so any historical call site compiles;
+ * no active source populates visionStats anymore.
  */
-function renderVisionBanner(visionStats?: VisionStats): string | null {
-  if (!visionStats) {
-    return null;
-  }
-
-  // Check if rescue succeeded
-  if (visionStats.visionPostsMerged > 0) {
-    return '⚠ This run was rescued by vision fallback — DOM extractor dropped posts; selectors likely drifted. See raw.json for selector failures.\n';
-  }
-
-  // Check if rescue failed
-  if (visionStats.apiErrors.length > 0) {
-    return '⚠ Vision fallback was triggered but failed (see visionStats.apiErrors in raw.json) — DOM extractor selectors likely need patching.\n';
-  }
-
+function renderVisionBanner(_visionStats?: VisionStats): string | null {
   return null;
 }
 

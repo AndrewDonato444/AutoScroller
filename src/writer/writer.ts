@@ -1,5 +1,7 @@
 import type { RunSummary } from '../summarizer/summarizer.js';
-import type { VisionStats } from '../extract/vision-fallback.js';
+// VisionStats retired with the Playwright era (April 2026). Preserved as a
+// local no-op shape so existing consumers that typed it optionally still compile.
+type VisionStats = Record<string, never>;
 
 /**
  * Context passed to writers containing file paths and run metadata.

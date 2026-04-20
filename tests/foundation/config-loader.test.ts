@@ -269,16 +269,10 @@ analytics:
     it('should populate defaults for omitted fields', async () => {
       const configPath = join(testRepoRoot, 'config.yaml');
 
-      // Minimal config with only required field
+      // Minimal config — scroll/browser/extractor sections omitted entirely
+      // (they're optional post-Playwright retirement, April 2026). What remains
+      // is the forward-clean shape: output + claude + interests + x.
       writeFileSync(configPath, `
-scroll:
-  minutes: 10
-browser:
-  userDataDir: ~/chrome
-  headless: false
-  viewport:
-    width: 1280
-    height: 900
 interests: []
 output:
   dir: ~/runs
@@ -286,15 +280,21 @@ output:
   format: markdown
 claude:
   model: claude-sonnet-4-6
+x:
+  baseUrl: https://api.x.com/2
+  lists: []
 `);
 
       const config = await loadConfig({ homeDir: testHomeDir, repoRoot: testRepoRoot });
 
-      // Verify defaults are filled in
-      expect(config.scroll.jitterMs).toEqual([400, 1400]);
-      expect(config.scroll.longPauseEvery).toBe(25);
-      expect(config.scroll.longPauseMs).toEqual([3000, 8000]);
-      expect(config.browser.viewport.width).toBe(1280);
+      // output defaults fill in
+      expect(config.output.destinations).toEqual(['markdown']);
+      // x.bookmarks gets its default
+      expect(config.x?.bookmarks.enabled).toBe(false);
+      expect(config.x?.bookmarks.postsPerRun).toBe(25);
+      // vestigial sections are undefined when omitted
+      expect(config.scroll).toBeUndefined();
+      expect(config.browser).toBeUndefined();
     });
   });
 
@@ -327,59 +327,10 @@ claude:
     });
   });
 
-  describe('UT-CL-009: Numeric bounds are enforced', () => {
-    it('should reject scroll.minutes < 1', async () => {
-      const configPath = join(testRepoRoot, 'config.yaml');
-
-      writeFileSync(configPath, `
-scroll:
-  minutes: 0
-browser:
-  userDataDir: ~/chrome
-  headless: false
-  viewport:
-    width: 1280
-    height: 900
-interests: []
-output:
-  dir: ~/runs
-  state: ~/state
-  format: markdown
-claude:
-  model: claude-sonnet-4-6
-`);
-
-      await expect(
-        loadConfig({ homeDir: testHomeDir, repoRoot: testRepoRoot })
-      ).rejects.toThrow(/scroll\.minutes/);
-    });
-
-    it('should reject scroll.minutes > 120', async () => {
-      const configPath = join(testRepoRoot, 'config.yaml');
-
-      writeFileSync(configPath, `
-scroll:
-  minutes: 999
-browser:
-  userDataDir: ~/chrome
-  headless: false
-  viewport:
-    width: 1280
-    height: 900
-interests: []
-output:
-  dir: ~/runs
-  state: ~/state
-  format: markdown
-claude:
-  model: claude-sonnet-4-6
-`);
-
-      await expect(
-        loadConfig({ homeDir: testHomeDir, repoRoot: testRepoRoot })
-      ).rejects.toThrow(/scroll\.minutes/);
-    });
-  });
+  // UT-CL-009 deleted in April 2026 when Playwright was retired: scroll.minutes
+  // is no longer a validated field (the x-api source has no time budget). The
+  // schema treats scroll/browser/extractor as vestigial optional blocks for
+  // backward compat. See tests/expansion/retire-playwright.test.ts RP-06/RP-07.
 
   describe('UT-CL-010: Output directory is tilde-expanded', () => {
     it('should expand tilde in output.dir to absolute path', async () => {

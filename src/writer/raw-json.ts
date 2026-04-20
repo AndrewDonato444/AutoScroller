@@ -1,8 +1,10 @@
 import { mkdir, writeFile, rename } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
-import type { ExtractedPost, SelectorFailure } from '../extract/extractor.js';
-import type { VisionStats } from '../extract/vision-fallback.js';
+import type { ExtractedPost, SelectorFailure } from '../types/post.js';
+// VisionStats retired with the Playwright era (April 2026). Preserved as a
+// local no-op shape so existing consumers that typed it optionally still compile.
+type VisionStats = Record<string, never>;
 
 /**
  * Run metadata for a scroll session.
@@ -13,6 +15,16 @@ export interface RunMeta {
   elapsedMs: number;
   tickCount: number;
   minutes: number;
+  /** Which source produced this run ('x-api' since April 2026; absent on historical Playwright runs). */
+  source?: string;
+  /** Per-list fetch diagnostics for x-api runs. Present when source === 'x-api'. */
+  listPulls?: Array<{
+    tag: string;
+    listName: string;
+    listId: string;
+    fetched: number;
+    error: string | null;
+  }>;
   dryRun: boolean;
 }
 

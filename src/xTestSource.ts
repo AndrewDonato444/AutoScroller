@@ -17,7 +17,7 @@
 
 import { loadConfig } from './config/load.js';
 import { pullFromXApi, type XSourceConfig, type ListPull } from './sources/xListSource.js';
-import type { ExtractedPost } from './extract/extractor.js';
+import type { ExtractedPost } from './types/post.js';
 
 function line(char = '─', n = 72) {
   return char.repeat(n);
