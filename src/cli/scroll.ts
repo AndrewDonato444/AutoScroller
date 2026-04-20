@@ -10,14 +10,23 @@ import { runWriters, type Writer, type WriteContext } from '../writer/writer.js'
 import { markdownWriter } from '../writer/markdown.js';
 import { createNotionWriter } from '../writer/notion.js';
 import { createVisionFallback, type VisionStats } from '../extract/vision-fallback.js';
+import { pullFromXApi, flattenPulls, type XSourceConfig } from '../sources/xListSource.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 
+export type ScrollSource = 'playwright' | 'x-api';
+
 export interface ScrollFlags {
   minutes?: number;
   dryRun?: boolean;
+  /**
+   * Which data source to use. Default 'playwright' preserves existing
+   * behavior. 'x-api' uses the X API Owned Reads source (April 2026
+   * migration) — requires config.x to be populated.
+   */
+  source?: ScrollSource;
 }
 
 // Exit codes
@@ -487,8 +496,17 @@ async function runSummarizerAndWriters(params: {
  *
  * Launches the persistent Chromium context and scrolls x.com/home
  * with jittered mouse wheel ticks for the budgeted time.
+ *
+ * With `flags.source === 'x-api'`, bypasses the browser entirely and pulls
+ * from the X API owned-reads endpoints instead (April 2026 migration).
  */
 export async function handleScroll(config: Config, flags: ScrollFlags): Promise<void> {
+  // Route to the X API path when requested. Everything below this guard
+  // is Playwright-specific.
+  if (flags.source === 'x-api') {
+    return handleScrollXApi(config, flags);
+  }
+
   const effectiveMinutes = flags.minutes ?? config.scroll.minutes;
   const resolvedUserDataDir = expandHomeDir(config.browser.userDataDir);
   const isDryRun = flags.dryRun ?? false;
@@ -773,4 +791,139 @@ export async function handleScroll(config: Config, flags: ScrollFlags): Promise<
   }
 
   process.exit(EXIT_SUCCESS);
+}
+
+/**
+ * X API source path. Pulls from configured X lists (and optionally bookmarks)
+ * instead of scrolling the browser, then feeds results through the same
+ * dedup / summarize / write pipeline as the Playwright path.
+ *
+ * Run ID gets an `-api` suffix so this run's output directory can coexist
+ * with a Playwright run started in the same second (supports Phase 2 parallel-
+ * run validation).
+ */
+async function handleScrollXApi(config: Config, flags: ScrollFlags): Promise<void> {
+  const isDryRun = flags.dryRun ?? false;
+
+  if (!config.x) {
+    console.error('--source x-api requires config.x to be populated.');
+    console.error('See projects/scrollproxy/migration-2026-04-x-api.md in SecondBrain for setup.');
+    process.exit(EXIT_ERROR);
+  }
+
+  // Build source config from the zod-validated config section.
+  const xConfig: XSourceConfig = {
+    baseUrl: config.x.baseUrl,
+    lists: config.x.lists,
+    bookmarks: config.x.bookmarks,
+  };
+
+  if (xConfig.lists.length === 0 && !xConfig.bookmarks.enabled) {
+    console.error('--source x-api requires at least one list in config.x.lists, or bookmarks.enabled=true.');
+    process.exit(EXIT_ERROR);
+  }
+
+  const startedAt = new Date();
+  const runId = `${generateRunId(startedAt)}-api`;
+
+  console.log(
+    `x-api pull: ${xConfig.lists.length} list(s)${xConfig.bookmarks.enabled ? ' + bookmarks' : ''}`
+  );
+
+  // Pull from X.
+  const pullResult = await pullFromXApi(xConfig);
+  const posts = flattenPulls(pullResult);
+  const endedAt = new Date(pullResult.finishedAt);
+  const elapsedMs = endedAt.getTime() - startedAt.getTime();
+
+  // Assemble stats in the shape the writer + downstream expects. No ads,
+  // no selector failures, no scroll ticks — this source doesn't have those.
+  const stats = {
+    postsExtracted: posts.length,
+    adsSkipped: 0,
+    duplicateHits: 0,
+    selectorFailures: [],
+  };
+
+  // Per-list breakdown for the summary line.
+  const perListSummary = pullResult.pulls
+    .map((p) => `${p.tag}=${p.fetched}${p.error ? '(err)' : ''}`)
+    .join(' ');
+  let summaryLine = `x-api complete: ${posts.length} posts in ${elapsedMs}ms [${perListSummary}]`;
+
+  // If every list errored and we have no posts, bail early.
+  const allListsErrored = pullResult.pulls.every((p) => p.error);
+  if (allListsErrored && posts.length === 0) {
+    console.log(summaryLine);
+    console.log('every list errored — nothing to summarize; check auth and list IDs');
+    pullResult.pulls.forEach((p) => {
+      if (p.error) console.log(`  • ${p.listName} [${p.tag}]: ${p.error}`);
+    });
+    process.exit(EXIT_ERROR);
+  }
+
+  if (isDryRun) {
+    console.log(`${summaryLine} (dry-run — skipping write + summarize)`);
+    process.exit(EXIT_SUCCESS);
+  }
+
+  // Write raw.json + update dedup cache.
+  let newPosts: ExtractedPost[];
+  let writeResult: Awaited<ReturnType<typeof writeRawJson>>;
+  try {
+    const writeAndCacheResult = await writeRawJsonAndUpdateCache({
+      outputDir: config.output.dir,
+      stateDir: config.output.state,
+      runId,
+      posts,
+      stats,
+      meta: {
+        startedAt: startedAt.toISOString(),
+        endedAt: endedAt.toISOString(),
+        elapsedMs,
+        tickCount: 0, // API source has no ticks
+        minutes: 0,
+        dryRun: false,
+        source: 'x-api',
+        listPulls: pullResult.pulls.map((p) => ({
+          tag: p.tag,
+          listName: p.listName,
+          listId: p.listId,
+          fetched: p.fetched,
+          error: p.error ?? null,
+        })),
+      },
+    });
+    newPosts = writeAndCacheResult.newPosts;
+    writeResult = writeAndCacheResult.writeResult;
+    summaryLine += writeAndCacheResult.summaryFragment;
+  } catch (error: any) {
+    console.log(summaryLine);
+    console.log(`write failed: ${error.message}`);
+    process.exit(EXIT_ERROR);
+  }
+
+  // Summarize + run writers. Reuses the same chain as the Playwright path —
+  // the summarizer doesn't care which source produced the posts.
+  try {
+    const result = await runSummarizerAndWriters({
+      posts,
+      newPosts,
+      config,
+      runId,
+      runDir: writeResult.runDir,
+      rawJsonPath: writeResult.rawJsonPath,
+      endedAt,
+      summaryLine,
+      visionStats: undefined, // No vision fallback on API source
+    });
+
+    console.log(result.summaryLine);
+    result.errorDetails.forEach((detail) => console.log(detail));
+    process.exit(result.success ? EXIT_SUCCESS : EXIT_ERROR);
+  } catch (summarizerError: any) {
+    console.log(summaryLine);
+    console.log(`summarizer error: ${summarizerError.message}`);
+    process.exit(EXIT_ERROR);
+  }
 }

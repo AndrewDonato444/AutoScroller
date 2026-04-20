@@ -113,7 +113,7 @@ async function loadConfigFromFlags(flags: Record<string, string | boolean>) {
  * Handle the scroll command.
  */
 async function handleScrollCommand(flags: Record<string, string | boolean>) {
-  const allowedFlags = ['help', 'h', 'version', 'v', 'minutes', 'dry-run', 'config'];
+  const allowedFlags = ['help', 'h', 'version', 'v', 'minutes', 'dry-run', 'config', 'source'];
   validateFlagsOrExit(flags, allowedFlags, 'scroll');
 
   // Parse --minutes flag
@@ -125,9 +125,21 @@ async function handleScrollCommand(flags: Record<string, string | boolean>) {
     process.exit(EXIT_USAGE_ERROR);
   }
 
+  // Parse --source flag. Defaults to 'playwright' to preserve existing
+  // behavior for anyone who hasn't migrated yet.
+  let source: 'playwright' | 'x-api' = 'playwright';
+  const sourceFlag = flags.source;
+  if (typeof sourceFlag === 'string') {
+    if (sourceFlag !== 'playwright' && sourceFlag !== 'x-api') {
+      console.error(`--source must be 'playwright' or 'x-api' (got '${sourceFlag}')`);
+      process.exit(EXIT_USAGE_ERROR);
+    }
+    source = sourceFlag;
+  }
+
   const config = await loadConfigFromFlags(flags);
   const dryRun = flags['dry-run'] === true;
-  await handleScroll(config, { minutes, dryRun });
+  await handleScroll(config, { minutes, dryRun, source });
 }
 
 /**

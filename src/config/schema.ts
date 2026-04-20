@@ -72,6 +72,27 @@ export const configSchema = z.object({
       maxScreenshotsPerRun: 24,
     },
   }),
+
+  // X API source layer (April 2026 migration to Owned Reads). Optional so
+  // existing Playwright-only configs continue to validate. When present,
+  // enables `--source x-api` mode in the CLI.
+  x: z.object({
+    baseUrl: z.string().url().default('https://api.x.com/2'),
+    lists: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      tag: z.string(),
+      postsPerRun: z.number().min(1).default(50),
+      note: z.string().optional(),
+    })).default([]),
+    bookmarks: z.object({
+      enabled: z.boolean().default(false),
+      postsPerRun: z.number().min(1).default(25),
+    }).default({
+      enabled: false,
+      postsPerRun: 25,
+    }),
+  }).optional(),
 }).strict(); // Reject unknown fields
 
 export type Config = z.infer<typeof configSchema>;

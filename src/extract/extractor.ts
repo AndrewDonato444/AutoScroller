@@ -65,6 +65,13 @@ export interface ExtractedPost {
   quoted: ExtractedPost | null;
   extractedAt: string;
   tickIndex: number;
+  /**
+   * Which source lane produced this post. Used by the April 2026 X API
+   * source to tag posts with their list origin (ai-frontier, convergence,
+   * broad, bookmarks) so the summarizer can route by lens. Unset for
+   * Playwright-extracted posts (which come from the unified feed).
+   */
+  sourceTag?: string;
 }
 
 /**

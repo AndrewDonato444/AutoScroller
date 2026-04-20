@@ -106,19 +106,24 @@ export function printHelp(version: string): void {
   console.log(`scrollproxy v${version} — scroll the feed, save the signal
 
 usage:
-  pnpm scroll   [--minutes <n>] [--dry-run] [--config <path>]
+  pnpm scroll   [--source playwright|x-api] [--minutes <n>] [--dry-run] [--config <path>]
   pnpm login    [--config <path>]
   pnpm replay   <run-id> [--config <path>]
 
 flags:
-  --minutes <n>    override scroll.minutes from config (1..120)
-  --dry-run        scroll + extract only, skip summarizer + writer
+  --source <s>     data source: 'playwright' (default, scrolls the browser) or
+                   'x-api' (pulls from X API owned-reads; requires config.x).
+                   x-api bypasses the browser entirely.
+  --minutes <n>    override scroll.minutes from config (1..120).
+                   Ignored when --source=x-api.
+  --dry-run        extract only, skip summarizer + writer
   --config <path>  load config from an explicit path
   --help, -h       show this message
   --version, -v    print version
 
 env:
-  ANTHROPIC_API_KEY  used by the summarizer (feature 12)`);
+  ANTHROPIC_API_KEY  used by the summarizer
+  X_BEARER_TOKEN     required when --source=x-api; bootstrapped by 'pnpm x:auth'`);
 }
 
 /**
