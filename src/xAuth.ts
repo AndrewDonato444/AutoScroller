@@ -18,9 +18,9 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { exec } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import { envLocalPath } from './lib/repoRoot.js';
 
-const ENV_FILE = path.resolve(process.cwd(), '.env.local');
+const ENV_FILE = envLocalPath();
 const REDIRECT_URI = 'http://localhost:8787/callback';
 const CALLBACK_PORT = 8787;
 const SCOPES = [

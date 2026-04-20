@@ -18,10 +18,10 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { refreshAccessToken } from '../xRefresh.js';
+import { refreshAccessToken, type RefreshResult } from '../xRefresh.js';
+import { envLocalPath } from '../lib/repoRoot.js';
 
-const ENV_FILE = path.resolve(process.cwd(), '.env.local');
+const ENV_FILE = envLocalPath();
 const DEFAULT_BASE_URL = 'https://api.x.com/2';
 
 /** If the cached token expires in less than this many ms, refresh proactively. */
@@ -37,10 +37,34 @@ interface TokenState {
 }
 
 let cachedToken: TokenState | null = null;
+/**
+ * Single shared promise for any refresh currently in flight. Ensures that
+ * concurrent callers (e.g. parallel list pulls from xListSource) coalesce
+ * into a single `refreshAccessToken()` call — otherwise X rotates the
+ * refresh_token between simultaneous refreshes and one of them gets
+ * stranded with a dead token.
+ */
+let inFlightRefresh: Promise<RefreshResult> | null = null;
 
 /** Clear the in-memory token cache. Useful in tests; rarely needed in practice. */
 export function resetClient(): void {
   cachedToken = null;
+  inFlightRefresh = null;
+}
+
+/**
+ * Wrap `refreshAccessToken()` in a single-flight pattern: if a refresh is
+ * already in flight, return that promise; otherwise start a new one.
+ * The `.finally()` clears the cache on both success and failure so a
+ * rejected refresh doesn't wedge all future calls on a dead promise.
+ */
+function coalescedRefresh(): Promise<RefreshResult> {
+  if (!inFlightRefresh) {
+    inFlightRefresh = refreshAccessToken().finally(() => {
+      inFlightRefresh = null;
+    });
+  }
+  return inFlightRefresh;
 }
 
 /** Read a single key from .env.local without touching process.env. */
@@ -74,7 +98,7 @@ async function getValidToken(): Promise<string> {
   }
   const msUntilExpiry = cachedToken.expiresAt.getTime() - Date.now();
   if (msUntilExpiry < PROACTIVE_REFRESH_THRESHOLD_MS) {
-    const refreshed = await refreshAccessToken();
+    const refreshed = await coalescedRefresh();
     cachedToken = {
       accessToken: refreshed.accessToken,
       expiresAt: new Date(refreshed.expiresAt),
@@ -146,10 +170,11 @@ export async function xGet<T = unknown>(
       continue;
     }
 
-    // 401 — try one refresh + retry, then give up.
+    // 401 — try one refresh + retry, then give up. Uses the coalesced
+    // refresh so concurrent 401s share a single refresh call.
     if (resp.status === 401 && !opts._didRefresh) {
-      resetClient(); // force re-read from disk (xRefresh wrote fresh values)
-      await refreshAccessToken();
+      await coalescedRefresh();
+      resetClient(); // force re-read from disk on next getValidToken()
       return xGet<T>(path, params, { ...opts, _didRefresh: true });
     }
 

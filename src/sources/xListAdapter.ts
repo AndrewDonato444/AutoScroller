@@ -83,22 +83,59 @@ export function adaptListResponse(
   for (const u of resp.includes?.users ?? []) usersById.set(u.id, u);
   const mediaByKey = new Map<string, XApiMedia>();
   for (const m of resp.includes?.media ?? []) mediaByKey.set(m.media_key, m);
+  const tweetsById = new Map<string, XApiTweet>();
+  for (const t of resp.includes?.tweets ?? []) tweetsById.set(t.id, t);
 
-  return tweets.map((t, idx) => adaptTweet(t, usersById, mediaByKey, sourceTag, extractedAt, idx));
+  return tweets.map((t, idx) => adaptTweet(t, usersById, mediaByKey, tweetsById, sourceTag, extractedAt, idx));
 }
 
 function adaptTweet(
   tweet: XApiTweet,
   usersById: Map<string, XApiUser>,
   mediaByKey: Map<string, XApiMedia>,
+  tweetsById: Map<string, XApiTweet>,
   sourceTag: string,
   extractedAt: string,
   idx: number
 ): ExtractedPost {
-  const user = tweet.author_id ? usersById.get(tweet.author_id) : undefined;
-  const handle = user?.username ?? 'unknown';
+  const currentUser = tweet.author_id ? usersById.get(tweet.author_id) : undefined;
+  const currentHandle = currentUser?.username ?? 'unknown';
 
   const referencedRetweet = tweet.referenced_tweets?.find((r) => r.type === 'retweeted');
+
+  // Retweet attribution: if this tweet is a retweet AND we can resolve the
+  // referenced original in the expansions, swap author + text to the
+  // original. This matches the Playwright extractor's historical semantics
+  // (author = who said it; repostedBy = who amplified it).
+  //
+  // If the original can't be resolved (missing from includes.tweets or its
+  // author isn't in usersById), fall back to the retweeter-as-author
+  // behavior rather than throwing or dropping the post. Degrade gracefully.
+  let author: { handle: string; displayName: string; verified: boolean };
+  let text: string;
+  let repostedBy: string | null;
+
+  const originalTweet = referencedRetweet ? tweetsById.get(referencedRetweet.id) : undefined;
+  const originalUser = originalTweet?.author_id ? usersById.get(originalTweet.author_id) : undefined;
+
+  if (referencedRetweet && originalTweet && originalUser) {
+    author = {
+      handle: originalUser.username,
+      displayName: originalUser.name,
+      verified: false,
+    };
+    text = originalTweet.text;
+    repostedBy = currentHandle;
+  } else {
+    // Non-retweet, or retweet with unresolvable reference: use current tweet.
+    author = {
+      handle: currentHandle,
+      displayName: currentUser?.name ?? currentHandle,
+      verified: false,
+    };
+    text = tweet.text;
+    repostedBy = referencedRetweet ? currentHandle : null;
+  }
 
   const metrics = tweet.public_metrics ?? {};
 
@@ -112,15 +149,9 @@ function adaptTweet(
 
   return {
     id: tweet.id,
-    url: `https://x.com/${handle}/status/${tweet.id}`,
-    author: {
-      handle,
-      displayName: user?.name ?? handle,
-      // X API v2 basic user.fields doesn't return verified status reliably at
-      // this tier. Defaulting to false; can be plumbed in later if needed.
-      verified: false,
-    },
-    text: tweet.text,
+    url: `https://x.com/${author.handle}/status/${tweet.id}`,
+    author,
+    text,
     postedAt: tweet.created_at ?? null,
     metrics: {
       replies: metrics.reply_count ?? null,
@@ -130,7 +161,7 @@ function adaptTweet(
     },
     media,
     isRepost: Boolean(referencedRetweet),
-    repostedBy: referencedRetweet ? handle : null,
+    repostedBy,
     quoted: null, // V2: resolve from referenced_tweets[type=quoted] + includes.tweets
     extractedAt,
     tickIndex: idx, // API pages don't have ticks; use position-in-batch as a stand-in

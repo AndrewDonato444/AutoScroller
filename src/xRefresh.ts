@@ -16,9 +16,9 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import { envLocalPath } from './lib/repoRoot.js';
 
-const ENV_FILE = path.resolve(process.cwd(), '.env.local');
+const ENV_FILE = envLocalPath();
 const TOKEN_URL = 'https://api.x.com/2/oauth2/token';
 
 type EnvMap = Record<string, string>;
