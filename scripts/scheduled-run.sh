@@ -24,12 +24,10 @@ echo "======================================================================"
 
 cd "$(dirname "$0")/.." || exit 1
 
-# Chrome is managed by the com.scrollproxy.chrome-daemon launchd agent —
-# it's always running, launchd restarts it on crash, we just attach via CDP.
-# Don't kill Chrome here; that would fight launchd's KeepAlive.
-
-# 10 minutes is the sweet spot per Andrew's preference.
-pnpm run scroll --minutes 10
+# X API Owned Reads pull — no browser, no scrolling, no Chrome.
+# Pulls configured lists + bookmarks, dedups, summarizes, writes.
+# Typically finishes in ~30-60s depending on list sizes and Claude latency.
+pnpm run scroll
 RUN_EXIT=$?
 
 # Sync summary files to the SecondBrain git remote so a cloud-scheduled
